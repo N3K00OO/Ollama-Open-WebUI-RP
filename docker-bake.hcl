@@ -9,6 +9,14 @@ variable "TORCH_VERSION" {
     default = "2.11.0"
 }
 
+variable "OPEN_WEBUI_VERSION" {
+    default = "0.8.12"
+}
+
+variable "LLAMA_CPP_VERSION" {
+    default = "b8660"
+}
+
 variable "EXTRA_TAG" {
     default = ""
 }
@@ -24,6 +32,8 @@ target "_common" {
     args = {
         PYTHON_VERSION     = PYTHON_VERSION
         TORCH_VERSION      = TORCH_VERSION
+        OPEN_WEBUI_VERSION = OPEN_WEBUI_VERSION
+        LLAMA_CPP_VERSION  = LLAMA_CPP_VERSION
     }
 }
 

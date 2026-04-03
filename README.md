@@ -1,18 +1,18 @@
 [![Build and Publish GHCR Images](https://github.com/N3K00OO/Ollama-Open-WebUI-RP/actions/workflows/build.yml/badge.svg)](https://github.com/N3K00OO/Ollama-Open-WebUI-RP/actions/workflows/build.yml)
 
-> Updated every 8 hours to stay on the latest upstream versions.
+> Updated by GitHub Actions every 5 days and built against the latest official `llama.cpp` and Open WebUI releases at build time.
 >
-> In Open WebUI, use the "Select a model" menu (top-left) to search and pull models from `ollama.com`.
-> You can find the available models at <https://ollama.com/models>.
-> If a model is not available there, you can manually download it from Hugging Face and import it.
+> This image runs `./llama-server` locally and points Open WebUI at its OpenAI-compatible `/v1` API.
+> Put your GGUF model in `/workspace/models` and either set `LLAMA_MODEL` or keep a single `*.gguf` file there for auto-detection.
 
 ### Exposed Ports
 
 | Port | Type | Purpose    |
 | ---- | ---- | ---------- |
 | 22   | TCP  | SSH        |
-| 8080 | HTTP | Open WebUI |
-| 8888 | HTTP | JupyterLab |
+| 8081 | HTTP | Open WebUI |
+| 11435 | HTTP | llama.cpp API proxy |
+| 8889 | HTTP | JupyterLab |
 
 ### Tag Structure
 
@@ -29,6 +29,7 @@
 | `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu130` | 13.0 |
 
 Images are published to GitHub Container Registry by GitHub Actions. No Docker Hub secrets are required.
+The package path stays the same because the GitHub repository name is unchanged.
 
 To change images: go to **Edit Pod/Template** -> set `Container Image`.
 
@@ -40,15 +41,21 @@ To change images: go to **Edit Pod/Template** -> set `Container Image`.
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
 | `JUPYTERLAB_PASSWORD` | Password for JupyterLab                                                                                                              | (unset)             |
 | `TIME_ZONE`           | [Timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (for example, `Asia/Seoul`)                               | `Etc/UTC`           |
-| `START_OLLAMA`        | Starts the Ollama server at start. (`True` / `False`)                                                                                | `True`              |
-| `OLLAMA_HOST`         | (Ollama) Configures the host and scheme for the Ollama server.                                                                       | `0.0.0.0`           |
-| `OLLAMA_MODELS`       | (Ollama) Path to the models directory.                                                                                               | `/workspace/models` |
+| `START_LLAMA_SERVER`  | Starts `./llama-server` during container boot. (`True` / `False`)                                                                    | `True`              |
+| `LLAMA_MODEL`         | Absolute path to a GGUF file. If unset, the startup script auto-detects a single `*.gguf` file in `/workspace/models`.             | (auto-detect)       |
+| `LLAMA_ALIAS`         | Optional model name shown by the OpenAI-compatible `/v1/models` endpoint and Open WebUI.                                            | GGUF filename       |
+| `LLAMA_CTX_SIZE`      | Context window passed to `./llama-server --ctx-size`.                                                                                | `4096`              |
+| `LLAMA_GPU_LAYERS`    | GPU offload setting passed to `./llama-server --n-gpu-layers`.                                                                       | `999`               |
+| `LLAMA_PARALLEL`      | Parallel request slots passed to `./llama-server --parallel`.                                                                        | `1`                 |
+| `LLAMA_SERVER_API_KEY`| Optional API key enforced by `./llama-server --api-key`. Open WebUI reuses the same value automatically.                            | (unset)             |
+| `LLAMA_SERVER_EXTRA_ARGS` | Extra flags appended to `./llama-server` for advanced setups.                                                                    | (unset)             |
 | `DATA_DIR`            | (Open WebUI) Base directory for data storage.                                                                                        | `/workspace/data`   |
 | `WEBUI_AUTH`          | (Open WebUI) Enables or disables authentication. Set to `False` to run in single-user mode (no login required). (`True` / `False`) | `False`             |
+| `RESET_CONFIG_ON_START` | Forces Open WebUI to re-apply environment-provided provider settings on every start, which avoids stale saved connection settings. | `True`              |
 
 To set: **Edit Pod/Template** -> **Add Environment Variable** (key/value).
 
-> For additional environment variables, refer to [Ollama](https://github.com/ollama/ollama/issues/2941#issuecomment-2322778733) and [Open WebUI](https://docs.openwebui.com/getting-started/env-configuration).
+> For additional environment variables, refer to the official [Open WebUI environment documentation](https://docs.openwebui.com/reference/env-configuration/) and the official [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md).
 >
 > For `WEBUI_AUTH`, setting it to `False` disables authentication.
 > This only works on fresh installations with no registered users.
@@ -59,7 +66,8 @@ To set: **Edit Pod/Template** -> **Add Environment Variable** (key/value).
 | App        | Location                       |
 | ---------- | ------------------------------ |
 | JupyterLab | `/workspace/logs/jupyterlab.log` |
-| Ollama     | `/workspace/logs/ollama.log`     |
+| llama.cpp  | `/workspace/logs/llama-server.log` |
+| Open WebUI | `/workspace/logs/open-webui.log`   |
 
 ---
 
@@ -69,7 +77,7 @@ To set: **Edit Pod/Template** -> **Add Environment Variable** (key/value).
 
 * **OS**: Ubuntu 22.04
 * **Python**: 3.11
-* **Framework**: Ollama + Open WebUI + JupyterLab
+* **Framework**: llama.cpp + Open WebUI + JupyterLab
 * **Libraries**: PyTorch 2.11.0, CUDA (12.6-13.0), Triton, [hf_hub](https://huggingface.co/docs/huggingface_hub), [nvtop](https://github.com/Syllo/nvtop)
 
 ---

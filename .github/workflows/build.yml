@@ -17,7 +17,8 @@ on:
       - 'Dockerfile'
       - 'scripts/**'
   schedule:
-    - cron: "0 */8 * * *"
+    # GitHub cron is calendar-based, so this runs at 00:00 UTC every 5th day-of-month step.
+    - cron: "0 0 */5 * *"
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -58,6 +59,36 @@ jobs:
         shell: bash
         run: echo "repo=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve latest upstream versions
+        id: versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          llama_cpp_version="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/ggml-org/llama.cpp/releases/latest |
+            python3 -c "import json, sys; print(json.load(sys.stdin)['tag_name'])"
+          )"
+
+          open_webui_version="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/open-webui/open-webui/releases/latest |
+            python3 -c "import json, sys; print(json.load(sys.stdin)['tag_name'].lstrip('v'))"
+          )"
+
+          echo "llama_cpp=${llama_cpp_version}" >> "$GITHUB_OUTPUT"
+          echo "open_webui=${open_webui_version}" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved llama.cpp ${llama_cpp_version}"
+          echo "Resolved Open WebUI ${open_webui_version}"
+
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
@@ -75,3 +106,8 @@ jobs:
           pull: true
           targets: ${{ matrix.target }}-${{ matrix.cuda }}
           push: ${{ github.event_name != 'pull_request' }}
+          set: |
+            *.args.LLAMA_CPP_VERSION=${{ steps.versions.outputs.llama_cpp }}
+            *.args.OPEN_WEBUI_VERSION=${{ steps.versions.outputs.open_webui }}
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
