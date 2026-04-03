@@ -1,12 +1,12 @@
 variable "IMAGE_REPO_NAME" {
-    default = "ghcr.io/somb1/ollama-open-webui-rp"
+    default = "ghcr.io/n3k00oo/ollama-open-webui-rp"
 }
 
 variable "PYTHON_VERSION" {
     default = "3.11"
 }
 variable "TORCH_VERSION" {
-    default = "2.7.0"
+    default = "2.11.0"
 }
 
 variable "EXTRA_TAG" {
@@ -27,14 +27,6 @@ target "_common" {
     }
 }
 
-target "_cu124" {
-    inherits = ["_common"]
-    args = {
-        BASE_IMAGE         = "nvidia/cuda:12.4.1-devel-ubuntu22.04"
-        CUDA_VERSION       = "cu124"
-    }
-}
-
 target "_cu126" {
     inherits = ["_common"]
     args = {
@@ -51,9 +43,12 @@ target "_cu128" {
     }
 }
 
-target "base-12-4" {
-    inherits = ["_cu124"]
-    tags = tag("base", "cu124")
+target "_cu130" {
+    inherits = ["_common"]
+    args = {
+        BASE_IMAGE         = "nvidia/cuda:13.0.2-devel-ubuntu22.04"
+        CUDA_VERSION       = "cu130"
+    }
 }
 
 target "base-12-6" {
@@ -64,4 +59,9 @@ target "base-12-6" {
 target "base-12-8" {
     inherits = ["_cu128"]
     tags = tag("base", "cu128")
+}
+
+target "base-13-0" {
+    inherits = ["_cu130"]
+    tags = tag("base", "cu130")
 }

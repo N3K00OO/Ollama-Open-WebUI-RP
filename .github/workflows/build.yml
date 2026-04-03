@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build and Publish GHCR Images
 
 on:
   workflow_dispatch:
@@ -19,6 +19,10 @@ on:
   schedule:
     - cron: "0 */8 * * *"
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   bake:
     runs-on: ubuntu-latest
@@ -29,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [base]
-        cuda: [12-4, 12-6, 12-8]
+        cuda: [12-6, 12-8, 13-0]
     steps:
       - name: Maximize build space
         uses: AdityaGarg8/remove-unwanted-software@v5
@@ -44,22 +48,30 @@ jobs:
           remove-swapfile: 'true'
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      - name: Docker login
+      - name: Compute GHCR image repository
+        id: image
+        shell: bash
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
-          username: ${{ vars.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/bake-action@v6
+        uses: docker/bake-action@v7
         env:
-          IMAGE_REPO_NAME: ghcr.io/${{ github.repository_owner }}/ollama-open-webui-rp
+          IMAGE_REPO_NAME: ${{ steps.image.outputs.repo }}
         with:
+          source: .
+          pull: true
           targets: ${{ matrix.target }}-${{ matrix.cuda }}
           push: ${{ github.event_name != 'pull_request' }}
