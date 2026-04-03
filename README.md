@@ -24,9 +24,9 @@
 
 | Image Name                                      | CUDA |
 | ----------------------------------------------- | ---- |
-| `sombi/ollama-open-webui:base-torch2.7.0-cu124` | 12.4 |
-| `sombi/ollama-open-webui:base-torch2.7.0-cu126` | 12.6 |
-| `sombi/ollama-open-webui:base-torch2.7.0-cu128` | 12.8 |
+| `ghcr.io/somb1/ollama-open-webui-rp:base-torch2.7.0-cu124` | 12.4 |
+| `ghcr.io/somb1/ollama-open-webui-rp:base-torch2.7.0-cu126` | 12.6 |
+| `ghcr.io/somb1/ollama-open-webui-rp:base-torch2.7.0-cu128` | 12.8 |
 
 To change images: Go to **Edit Pod/Template** → Set `Container Image`.
 

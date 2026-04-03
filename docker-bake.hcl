@@ -1,5 +1,5 @@
-variable "DOCKERHUB_REPO_NAME" {
-    default = "sombi/ollama-open-webui"
+variable "IMAGE_REPO_NAME" {
+    default = "ghcr.io/somb1/ollama-open-webui-rp"
 }
 
 variable "PYTHON_VERSION" {
@@ -15,7 +15,7 @@ variable "EXTRA_TAG" {
 
 function "tag" {
     params = [tag, cuda]
-    result = ["${DOCKERHUB_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}${EXTRA_TAG}"]
+    result = ["${IMAGE_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}${EXTRA_TAG}"]
 }
 
 target "_common" {
