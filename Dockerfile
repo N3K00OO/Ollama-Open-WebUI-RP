@@ -45,7 +45,7 @@ ENV SHELL=/bin/bash \
     OPENAI_API_BASE_URL=http://127.0.0.1:11434/v1 \
     OPENAI_API_KEY=sk-no-key-required \
     HF_HOME=/runpod-volume/.cache/huggingface/ \
-    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    HF_XET_HIGH_PERFORMANCE=1 \
     PIP_CACHE_DIR=/runpod-volume/.cache/pip/ \
     UV_CACHE_DIR=/runpod-volume/.cache/uv/
 
@@ -69,7 +69,7 @@ RUN pip install --no-cache-dir -U \
     pip setuptools wheel \
     jupyterlab jupyterlab_widgets ipykernel ipywidgets \
     numpy scipy matplotlib pandas scikit-learn seaborn requests tqdm pillow pyyaml \
-    huggingface_hub hf_transfer \
+    "huggingface_hub[hf_xet]" \
     open-webui==${OPEN_WEBUI_VERSION} \
     torch==${TORCH_VERSION} torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
 
