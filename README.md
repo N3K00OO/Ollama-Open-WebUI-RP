@@ -51,7 +51,7 @@ Place GGUF models in:
 Startup behavior:
 
 - configured Hugging Face and `wget` downloads run before `llama-server` starts, so the pod does not need a second boot
-- startup blocks known-unsafe GPUs such as V100 / compute capability `7.0` unless `LLAMA_ALLOW_UNSUPPORTED_GPU=True`
+- V100 / compute capability `7.0` is allowed on the `cu124`, `cu125`, `cu126`, and `cu128` images, but blocked by default on `cu130` unless `LLAMA_ALLOW_UNSUPPORTED_GPU=True`
 - `llama-server` is always launched on `127.0.0.1:11434`, never on `8080`
 - if there is exactly one non-mmproj `*.gguf` file anywhere under `/workspace/models`, it is used as the explicit `--model`
 - if there is exactly one `*mmproj*.gguf` file anywhere under `/workspace/models`, it is used as the explicit `--mmproj`
@@ -85,7 +85,7 @@ Startup behavior:
 | `LLAMA_CTX_SIZE` | Value passed to `--ctx-size` | `4096` |
 | `LLAMA_GPU_LAYERS` | Value passed to `--n-gpu-layers` | `999` |
 | `LLAMA_PARALLEL` | Value passed to `--parallel` | `1` |
-| `LLAMA_ALLOW_UNSUPPORTED_GPU` | Overrides the default V100 / compute capability `7.0` block | `False` |
+| `LLAMA_ALLOW_UNSUPPORTED_GPU` | Overrides the default CUDA 13.x V100 / compute capability `7.0` block | `False` |
 | `LLAMA_SERVER_API_KEY` | Optional API key for `llama-server` | unset |
 | `LLAMA_SERVER_EXTRA_ARGS` | Extra flags appended to `llama-server`. Do not use this for host, port, model, alias, or mmproj. | unset |
 | `LLAMA_READY_TIMEOUT` | Seconds to wait for `/v1/models` readiness per launch attempt | `600` |

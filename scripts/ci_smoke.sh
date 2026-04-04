@@ -134,14 +134,22 @@ mkdir -p /workspace/logs /workspace/models /workspace/data
 source /post_start.sh
 
 make_stub_nvidia "Tesla V100-SXM2-32GB" "7.0"
+CUDA_VERSION="cu130"
 unset LLAMA_ALLOW_UNSUPPORTED_GPU
 if validate_gpu_compatibility; then
-  fail "V100 guard should block unsupported GPUs by default"
+  fail "V100 guard should block CUDA 13.x images by default"
 fi
 
+CUDA_VERSION="cu126"
+validate_gpu_compatibility
+
+CUDA_VERSION="cu130"
 LLAMA_ALLOW_UNSUPPORTED_GPU=True
 validate_gpu_compatibility
 unset LLAMA_ALLOW_UNSUPPORTED_GPU
+
+make_stub_nvidia "NVIDIA RTX A6000" "8.6"
+validate_gpu_compatibility
 
 make_stub_nvidia "NVIDIA A10" "8.6"
 MODEL_PATH="${TEST_TMP}/model.gguf"

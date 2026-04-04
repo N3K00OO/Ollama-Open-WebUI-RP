@@ -34,6 +34,7 @@ ENV SHELL=/bin/bash \
     PYTHONUNBUFFERED=True \
     DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
+    CUDA_VERSION=${CUDA_VERSION} \
     DATA_DIR=/workspace/data \
     WEBUI_AUTH=False \
     START_LLAMA_SERVER=True \

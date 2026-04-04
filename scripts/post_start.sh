@@ -373,7 +373,32 @@ detect_gpu_info() {
   return 0
 }
 
+cuda_runtime_family() {
+  local cuda_tag="${CUDA_VERSION:-}"
+
+  cuda_tag="${cuda_tag,,}"
+  cuda_tag="${cuda_tag//./}"
+  cuda_tag="${cuda_tag//-/}"
+
+  case "${cuda_tag}" in
+    cu12*)
+      printf 'cu12\n'
+      ;;
+    cu13*)
+      printf 'cu13\n'
+      ;;
+    "")
+      printf 'unknown\n'
+      ;;
+    *)
+      printf 'unknown\n'
+      ;;
+  esac
+}
+
 validate_gpu_compatibility() {
+  local runtime_family=""
+
   if ! detect_gpu_info; then
     return 1
   fi
@@ -386,8 +411,22 @@ validate_gpu_compatibility() {
   fi
 
   if [[ "${GPU_COMPUTE_CAPABILITY}" == "7.0" ]] || [[ "${GPU_NAME,,}" == *"v100"* ]]; then
-    log "Unsupported GPU/toolchain combination detected for ${GPU_NAME} (${GPU_COMPUTE_CAPABILITY}). This image is blocked by default to avoid CUDA/PTX warmup crashes. Set LLAMA_ALLOW_UNSUPPORTED_GPU=True to override, or use a compatible GPU/image."
-    return 1
+    runtime_family="$(cuda_runtime_family)"
+
+    case "${runtime_family}" in
+      cu12)
+        log "Volta/V100 GPU detected on CUDA 12.x (${CUDA_VERSION:-unset}). Allowing startup. If warmup is unstable, set LLAMA_SERVER_EXTRA_ARGS=--no-warmup."
+        return 0
+        ;;
+      cu13)
+        log "V100 / compute capability 7.0 is blocked on CUDA 13.x images (${CUDA_VERSION:-unset}) because CUDA 13 drops Volta-targeted offline compilation and library support. Use a cu12x image tag, or set LLAMA_ALLOW_UNSUPPORTED_GPU=True to override."
+        return 1
+        ;;
+      *)
+        log "V100 / compute capability 7.0 detected, but CUDA_VERSION is unknown. Refusing startup by default. Use a cu12x image tag, or set LLAMA_ALLOW_UNSUPPORTED_GPU=True to override."
+        return 1
+        ;;
+    esac
   fi
 
   return 0
