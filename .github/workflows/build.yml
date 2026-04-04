@@ -83,11 +83,29 @@ jobs:
             python3 -c "import json, sys; print(json.load(sys.stdin)['tag_name'].lstrip('v'))"
           )"
 
+          torch_version="$(
+            python3 - <<'PY'
+from pathlib import Path
+import re
+
+match = re.search(
+    r'variable "TORCH_VERSION"\s*\{\s*default = "([^"]+)"',
+    Path("docker-bake.hcl").read_text(),
+    re.S,
+)
+if not match:
+    raise SystemExit("Unable to resolve TORCH_VERSION from docker-bake.hcl")
+print(match.group(1))
+PY
+          )"
+
           echo "llama_cpp=${llama_cpp_version}" >> "$GITHUB_OUTPUT"
           echo "open_webui=${open_webui_version}" >> "$GITHUB_OUTPUT"
+          echo "torch=${torch_version}" >> "$GITHUB_OUTPUT"
 
           echo "Resolved llama.cpp ${llama_cpp_version}"
           echo "Resolved Open WebUI ${open_webui_version}"
+          echo "Resolved PyTorch ${torch_version}"
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
@@ -111,3 +129,16 @@ jobs:
             *.args.OPEN_WEBUI_VERSION=${{ steps.versions.outputs.open_webui }}
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
+
+      - name: Verify published GHCR image
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cuda_tag="cu${{ matrix.cuda }}"
+          cuda_tag="${cuda_tag//-/}"
+          image_ref="${{ steps.image.outputs.repo }}:base-torch${{ steps.versions.outputs.torch }}-${cuda_tag}"
+
+          docker buildx imagetools inspect "${image_ref}" > /dev/null
+          echo "Verified ${image_ref}"
