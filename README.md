@@ -16,7 +16,7 @@
 
 ### Tag Structure
 
-* `cu124`, `cu126`, `cu128`, `cu130`: CUDA version (12.4 / 12.6 / 12.8 / 13.0)
+* `cu124`, `cu125`, `cu126`, `cu128`, `cu130`: CUDA version (12.4 / 12.5 / 12.6 / 12.8 / 13.0)
 
 ---
 
@@ -25,6 +25,7 @@
 | Image Name | CUDA |
 | ---------- | ---- |
 | `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu124` | 12.4 |
+| `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu125` | 12.5 |
 | `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu126` | 12.6 |
 | `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu128` | 12.8 |
 | `ghcr.io/n3k00oo/ollama-open-webui-rp:base-torch2.11.0-cu130` | 13.0 |
