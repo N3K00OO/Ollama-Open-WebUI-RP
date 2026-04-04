@@ -84,19 +84,7 @@ jobs:
           )"
 
           torch_version="$(
-            python3 - <<'PY'
-from pathlib import Path
-import re
-
-match = re.search(
-    r'variable "TORCH_VERSION"\s*\{\s*default = "([^"]+)"',
-    Path("docker-bake.hcl").read_text(),
-    re.S,
-)
-if not match:
-    raise SystemExit("Unable to resolve TORCH_VERSION from docker-bake.hcl")
-print(match.group(1))
-PY
+            python3 -c "from pathlib import Path; import re; match = re.search(r'variable \"TORCH_VERSION\"\\s*\\{\\s*default = \"([^\"]+)\"', Path('docker-bake.hcl').read_text(), re.S); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit('Unable to resolve TORCH_VERSION from docker-bake.hcl')))"
           )"
 
           echo "llama_cpp=${llama_cpp_version}" >> "$GITHUB_OUTPUT"
