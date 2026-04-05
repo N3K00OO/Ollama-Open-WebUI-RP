@@ -51,24 +51,45 @@ jobs:
           set -euo pipefail
           docker run --rm --entrypoint python runpod-hub-smoke /ci_smoke.py
 
-      - name: Verify worker process stays up
+      - name: Run worker in local test mode
         shell: bash
         run: |
           set -euo pipefail
 
-          cid="$(docker run -d runpod-hub-smoke)"
-          trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
+          cat > .runpod/test_input.json <<'EOF'
+          {
+            "input": {
+              "action": "health"
+            }
+          }
+          EOF
 
-          sleep 10
+          cid="$(docker run -d -v "${PWD}/.runpod/test_input.json:/test_input.json:ro" runpod-hub-smoke)"
+          trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true; rm -f .runpod/test_input.json' EXIT
+
+          for _ in $(seq 1 20); do
+            status="$(docker inspect -f '{{.State.Status}}' "${cid}")"
+            if [ "${status}" = "exited" ]; then
+              break
+            fi
+            sleep 1
+          done
+
           status="$(docker inspect -f '{{.State.Status}}' "${cid}")"
+          exit_code="$(docker inspect -f '{{.State.ExitCode}}' "${cid}")"
+          logs="$(docker logs "${cid}" 2>&1 || true)"
 
-          if [ "${status}" != "running" ]; then
-            docker logs "${cid}" || true
-            echo "RunPod Hub worker exited before smoke verification completed."
+          printf '%s\n' "${logs}"
+
+          if [ "${status}" != "exited" ] || [ "${exit_code}" != "0" ]; then
+            echo "RunPod Hub worker did not complete successfully in local test mode."
             exit 1
           fi
 
-          docker logs "${cid}" || true
+          if [[ "${logs}" != *"Starting Serverless Worker"* ]]; then
+            echo "RunPod Hub worker did not emit the expected startup log."
+            exit 1
+          fi
 
   smoke:
     needs: runpod-hub-smoke
