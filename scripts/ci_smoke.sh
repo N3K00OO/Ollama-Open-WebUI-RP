@@ -286,7 +286,9 @@ nginx -t >/dev/null
 nginx -T > "${TEST_TMP}/nginx.txt" 2>&1
 grep -q 'proxy_http_version 1.1;' "${TEST_TMP}/nginx.txt" || fail "nginx config should enable HTTP/1.1 proxying"
 grep -q 'proxy_set_header Upgrade $http_upgrade;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward Upgrade headers"
-grep -q 'proxy_set_header X-Forwarded-Proto $scheme;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward X-Forwarded-Proto"
+grep -q 'proxy_set_header Host $proxy_host_header;' "${TEST_TMP}/nginx.txt" || fail "nginx config should preserve the public host for upstream services"
+grep -q 'proxy_set_header X-Forwarded-Host $proxy_forwarded_host;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward X-Forwarded-Host"
+grep -q 'proxy_set_header X-Forwarded-Proto $proxy_forwarded_proto;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward the public X-Forwarded-Proto"
 
 nginx
 sleep 1
