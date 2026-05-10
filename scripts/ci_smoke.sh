@@ -296,10 +296,10 @@ GET /ws/socket.io/?EIO=4&transport=websocket 400
 EOF
 check_openwebui_socketio_failures "${TEST_TMP}/openwebui.log"
 
-LLAMA_READY_URL="http://127.0.0.1:18080/v1/models"
+LLAMA_READY_URL="http://127.0.0.1:18081/v1/models"
 LLAMA_READY_TIMEOUT=10
 LLAMA_READY_POLL_INTERVAL=1
-start_fake_models_server 18080
+start_fake_models_server 18081
 wait_for_llama_ready "${FAKE_SERVER_PID}"
 kill "${FAKE_SERVER_PID}" 2>/dev/null || true
 wait "${FAKE_SERVER_PID}" 2>/dev/null || true
