@@ -8,7 +8,18 @@ set -e  # Exit the script if any statement returns a non-true return value
 # Start nginx service
 start_nginx() {
     echo "Starting Nginx service..."
-    service nginx start
+    mkdir -p /workspace/logs /run/nginx /var/log/nginx
+
+    if ! nginx -t; then
+        echo "Nginx configuration test failed." >&2
+        return 1
+    fi
+
+    if ! nginx; then
+        echo "Nginx failed to start. Recent nginx error log:" >&2
+        tail -200 /workspace/logs/nginx-error.log 2>/dev/null || true
+        return 1
+    fi
 }
 
 # Execute script if exists
@@ -98,22 +109,24 @@ start_jupyter() {
     echo "JupyterLab started"
 }
 
-# ---------------------------------------------------------------------------- #
-#                               Main Program                                   #
-# ---------------------------------------------------------------------------- #
+main() {
+    start_nginx
 
-start_nginx
+    execute_script "/pre_start.sh" "Running pre-start script..."
 
-execute_script "/pre_start.sh" "Running pre-start script..."
+    echo "Pod Started"
 
-echo "Pod Started"
+    setup_ssh
+    start_jupyter
+    export_env_vars
 
-setup_ssh
-start_jupyter
-export_env_vars
+    execute_script "/post_start.sh" "Running post-start script..."
 
-execute_script "/post_start.sh" "Running post-start script..."
+    echo "Start script(s) finished, pod is ready to use."
 
-echo "Start script(s) finished, pod is ready to use."
+    sleep infinity
+}
 
-sleep infinity
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

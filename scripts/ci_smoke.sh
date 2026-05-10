@@ -64,6 +64,8 @@ cleanup() {
 
 trap cleanup EXIT
 
+source /start.sh
+
 make_stub_nvidia() {
   local gpu_name="$1"
   local compute_capability="$2"
@@ -216,6 +218,11 @@ assert_proxy_header_forwarding() {
 
   rm -f "${response_file}"
 }
+
+rm -rf /workspace/logs
+start_nginx
+test -d /workspace/logs || fail "start_nginx should recreate /workspace/logs at runtime"
+nginx -s stop >/dev/null 2>&1 || true
 
 mkdir -p /workspace/logs /workspace/models /workspace/data
 source /post_start.sh
