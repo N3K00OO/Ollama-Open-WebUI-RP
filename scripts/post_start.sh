@@ -4,6 +4,7 @@ set -uo pipefail
 
 LLAMA_LOG_PATH="/workspace/logs/llama-server.log"
 OPENWEBUI_LOG_PATH="/workspace/logs/open-webui.log"
+SEARXNG_LOG_PATH="/workspace/logs/searxng.log"
 LLAMA_READY_MARKER="/workspace/logs/llama-server.ready"
 LLAMA_FAILED_MARKER="/workspace/logs/llama-server.failed"
 LLAMA_SUPERVISOR_PID_FILE="/workspace/logs/llama-supervisor.pid"
@@ -17,6 +18,9 @@ READY_HTTP_CODE=""
 READY_BODY=""
 GPU_NAME=""
 GPU_COMPUTE_CAPABILITY=""
+SEARXNG_PID=""
+SEARXNG_READY_HTTP_CODE=""
+SEARXNG_READY_BODY=""
 declare -a LLAMA_CMD=()
 
 timestamp() {
@@ -82,8 +86,9 @@ reset_launcher_state() {
 }
 
 ensure_runtime_paths() {
-  mkdir -p /workspace/logs /workspace/models /workspace/data
+  mkdir -p /workspace/logs /workspace/models /workspace/data /workspace/searxng-cache
   : > "${LLAMA_LOG_PATH}"
+  : > "${SEARXNG_LOG_PATH}"
   rm -f "${LLAMA_READY_MARKER}" "${LLAMA_FAILED_MARKER}" "${LLAMA_SUPERVISOR_PID_FILE}"
 }
 
@@ -96,6 +101,18 @@ configure_openwebui_runtime_env() {
 
   if [ -n "${WEBUI_URL:-}" ] && [ -z "${CORS_ALLOW_ORIGIN:-}" ]; then
     export CORS_ALLOW_ORIGIN="${WEBUI_URL}"
+  fi
+
+  if is_true "${START_SEARXNG:-True}" || [ -n "${SEARXNG_QUERY_URL:-}" ]; then
+    export ENABLE_WEB_SEARCH="${ENABLE_WEB_SEARCH:-True}"
+    export WEB_SEARCH_ENGINE="${WEB_SEARCH_ENGINE:-searxng}"
+    export WEB_SEARCH_RESULT_COUNT="${WEB_SEARCH_RESULT_COUNT:-3}"
+    export WEB_SEARCH_CONCURRENT_REQUESTS="${WEB_SEARCH_CONCURRENT_REQUESTS:-10}"
+
+    if [ "${WEB_SEARCH_ENGINE}" = "searxng" ]; then
+      export SEARXNG_QUERY_URL="${SEARXNG_QUERY_URL:-http://127.0.0.1:${SEARXNG_PORT:-18080}/search?q=<query>}"
+      export SEARXNG_LANGUAGE="${SEARXNG_LANGUAGE:-all}"
+    fi
   fi
 }
 
@@ -751,6 +768,109 @@ wait_for_initial_llama_readiness() {
   return 1
 }
 
+query_searxng_endpoint() {
+  local response_file=""
+  local curl_status=0
+
+  response_file="$(mktemp)"
+  SEARXNG_READY_BODY=""
+  SEARXNG_READY_HTTP_CODE="000"
+
+  if SEARXNG_READY_HTTP_CODE="$(curl -sS --max-time "${SEARXNG_READY_CURL_TIMEOUT:-5}" -o "${response_file}" -w '%{http_code}' "${SEARXNG_READY_URL:-http://127.0.0.1:${SEARXNG_PORT:-18080}/}" 2>>"${SEARXNG_LOG_PATH}")"; then
+    SEARXNG_READY_BODY="$(cat "${response_file}")"
+    rm -f "${response_file}"
+    return 0
+  fi
+
+  curl_status=$?
+  SEARXNG_READY_BODY="$(cat "${response_file}" 2>/dev/null || true)"
+  rm -f "${response_file}"
+  SEARXNG_READY_HTTP_CODE="000"
+  return "${curl_status}"
+}
+
+wait_for_searxng_ready() {
+  local server_pid="$1"
+  local timeout="${SEARXNG_READY_TIMEOUT:-60}"
+  local interval="${SEARXNG_READY_POLL_INTERVAL:-2}"
+  local elapsed=0
+  local waiting_logged=0
+
+  while [ "${elapsed}" -lt "${timeout}" ]; do
+    if ! kill -0 "${server_pid}" 2>/dev/null; then
+      log "SearXNG exited before becoming ready."
+      return 1
+    fi
+
+    if query_searxng_endpoint; then
+      case "${SEARXNG_READY_HTTP_CODE}" in
+        200)
+          log "SearXNG is ready at ${SEARXNG_READY_URL:-http://127.0.0.1:${SEARXNG_PORT:-18080}/}."
+          return 0
+          ;;
+        *)
+          log "Waiting for SearXNG readiness. Received HTTP ${SEARXNG_READY_HTTP_CODE}."
+          ;;
+      esac
+    else
+      if [ "${waiting_logged}" -eq 0 ]; then
+        log "Waiting for SearXNG to bind to 127.0.0.1:${SEARXNG_PORT:-18080}."
+        waiting_logged=1
+      fi
+    fi
+
+    sleep "${interval}"
+    elapsed=$((elapsed + interval))
+  done
+
+  log "Timed out after ${timeout}s waiting for SearXNG readiness."
+  return 1
+}
+
+start_searxng() {
+  local port="${SEARXNG_PORT:-18080}"
+  local workers="${SEARXNG_WORKERS:-1}"
+  local settings_path="${SEARXNG_SETTINGS_PATH:-/etc/searxng/settings.yml}"
+
+  if ! is_true "${START_SEARXNG:-True}"; then
+    log "START_SEARXNG is not set to TRUE. Skipping local SearXNG startup."
+    return 0
+  fi
+
+  if [ ! -x /opt/searxng-venv/bin/granian ]; then
+    log "SearXNG runtime is missing: /opt/searxng-venv/bin/granian"
+    return 1
+  fi
+
+  if [ ! -f "${settings_path}" ]; then
+    log "SearXNG settings file is missing: ${settings_path}"
+    return 1
+  fi
+
+  mkdir -p /workspace/searxng-cache
+  export SEARXNG_SETTINGS_PATH="${settings_path}"
+  export __SEARXNG_SETTINGS_PATH="${settings_path}"
+  export SEARXNG_SECRET="${SEARXNG_SECRET:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)}"
+  export SEARXNG_PORT="${port}"
+  export SEARXNG_BASE_URL="${SEARXNG_BASE_URL:-http://127.0.0.1:${port}/}"
+
+  log "Starting SearXNG on 127.0.0.1:${port}."
+  (
+    cd / || exit 1
+    /opt/searxng-venv/bin/granian \
+      --interface wsgi \
+      --host 127.0.0.1 \
+      --port "${port}" \
+      --workers "${workers}" \
+      searx.webapp:app
+  ) >> "${SEARXNG_LOG_PATH}" 2>&1 &
+
+  SEARXNG_PID="$!"
+  log "SearXNG pid=${SEARXNG_PID}; logging to ${SEARXNG_LOG_PATH}"
+
+  wait_for_searxng_ready "${SEARXNG_PID}"
+}
+
 check_openwebui_socketio_failures() {
   local excerpt_file="$1"
   local threshold="${OPENWEBUI_WS_400_THRESHOLD:-3}"
@@ -817,6 +937,10 @@ main() {
     fi
   else
     log "START_LLAMA_SERVER is not set to TRUE. Skipping llama.cpp server start."
+  fi
+
+  if ! start_searxng; then
+    return 1
   fi
 
   start_openwebui

@@ -17,6 +17,10 @@ variable "LLAMA_CPP_VERSION" {
     default = "b8660"
 }
 
+variable "SEARXNG_VERSION" {
+    default = "FETCH_HEAD"
+}
+
 variable "EXTRA_TAG" {
     default = ""
 }
@@ -34,6 +38,7 @@ target "_common" {
         TORCH_VERSION      = TORCH_VERSION
         OPEN_WEBUI_VERSION = OPEN_WEBUI_VERSION
         LLAMA_CPP_VERSION  = LLAMA_CPP_VERSION
+        SEARXNG_VERSION    = SEARXNG_VERSION
     }
 }
 

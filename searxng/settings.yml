@@ -1,0 +1,25 @@
+# Local SearXNG instance for Open WebUI web search.
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "LLAMA Open WebUI Search"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "runpod-local-searxng-change-me"
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 8.0

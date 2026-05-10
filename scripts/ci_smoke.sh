@@ -53,6 +53,11 @@ cleanup() {
     wait "${HEADER_ECHO_PID}" 2>/dev/null || true
   fi
 
+  if [ -n "${SEARXNG_PID:-}" ] && kill -0 "${SEARXNG_PID}" 2>/dev/null; then
+    kill "${SEARXNG_PID}" 2>/dev/null || true
+    wait "${SEARXNG_PID}" 2>/dev/null || true
+  fi
+
   nginx -s stop >/dev/null 2>&1 || true
   rm -rf "${TEST_TMP}"
 }
@@ -263,7 +268,26 @@ unset CORS_ALLOW_ORIGIN
 WEBUI_URL="https://example.runpod.dev"
 configure_openwebui_runtime_env
 assert_eq "${WEBUI_URL}" "${CORS_ALLOW_ORIGIN}" "WEBUI_URL should seed CORS_ALLOW_ORIGIN when unset"
-unset WEBUI_URL CORS_ALLOW_ORIGIN
+assert_eq "True" "${ENABLE_WEB_SEARCH}" "Embedded SearXNG should enable Open WebUI web search by default"
+assert_eq "searxng" "${WEB_SEARCH_ENGINE}" "Embedded SearXNG should select the searxng web search provider"
+assert_eq "http://127.0.0.1:18080/search?q=<query>" "${SEARXNG_QUERY_URL}" "Open WebUI should point at the embedded SearXNG instance"
+unset WEBUI_URL CORS_ALLOW_ORIGIN ENABLE_WEB_SEARCH WEB_SEARCH_ENGINE SEARXNG_QUERY_URL
+
+START_SEARXNG=True
+SEARXNG_PORT=18080
+SEARXNG_READY_TIMEOUT=30
+SEARXNG_READY_POLL_INTERVAL=1
+start_searxng
+
+searxng_response="$(mktemp)"
+searxng_status="$(curl -sS -o "${searxng_response}" -w '%{http_code}' "http://127.0.0.1:${SEARXNG_PORT}/search?q=random+uuid&format=json")"
+assert_eq "200" "${searxng_status}" "SearXNG should allow JSON search responses for Open WebUI"
+python -m json.tool "${searxng_response}" >/dev/null || fail "SearXNG JSON response should parse cleanly"
+rm -f "${searxng_response}"
+kill "${SEARXNG_PID}" 2>/dev/null || true
+wait "${SEARXNG_PID}" 2>/dev/null || true
+SEARXNG_PID=""
+unset START_SEARXNG SEARXNG_PORT SEARXNG_READY_TIMEOUT SEARXNG_READY_POLL_INTERVAL
 
 cat > "${TEST_TMP}/openwebui.log" <<'EOF'
 GET /ws/socket.io/?EIO=4&transport=websocket 400

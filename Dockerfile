@@ -29,6 +29,7 @@ ARG PYTHON_VERSION
 ARG TORCH_VERSION
 ARG CUDA_VERSION
 ARG OPEN_WEBUI_VERSION
+ARG SEARXNG_VERSION=FETCH_HEAD
 
 ENV SHELL=/bin/bash \
     PYTHONUNBUFFERED=True \
@@ -38,6 +39,7 @@ ENV SHELL=/bin/bash \
     DATA_DIR=/workspace/data \
     WEBUI_AUTH=False \
     START_LLAMA_SERVER=True \
+    START_SEARXNG=True \
     LLAMA_CTX_SIZE=4096 \
     LLAMA_GPU_LAYERS=999 \
     LLAMA_PARALLEL=1 \
@@ -45,6 +47,7 @@ ENV SHELL=/bin/bash \
     ENABLE_OPENAI_API=True \
     OPENAI_API_BASE_URL=http://127.0.0.1:11434/v1 \
     OPENAI_API_KEY=sk-no-key-required \
+    SEARXNG_PORT=18080 \
     HF_HOME=/runpod-volume/.cache/huggingface/ \
     HF_XET_HIGH_PERFORMANCE=1 \
     PIP_CACHE_DIR=/runpod-volume/.cache/pip/ \
@@ -55,7 +58,8 @@ WORKDIR /
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         git wget curl bash nginx-light rsync sudo binutils ffmpeg lshw nano tzdata file build-essential nvtop \
-        libgl1 libglib2.0-0 libssl3 openssh-server ca-certificates zstd && \
+        libgl1 libglib2.0-0 libssl3 openssh-server ca-certificates zstd \
+        python3-dev libxml2-dev libxslt1-dev zlib1g-dev libffi-dev libssl-dev && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
@@ -74,13 +78,25 @@ RUN pip install --no-cache-dir -U \
     open-webui==${OPEN_WEBUI_VERSION} \
     torch==${TORCH_VERSION} torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
 
+RUN uv venv --seed /opt/searxng-venv && \
+    git init /tmp/searxng && \
+    git -C /tmp/searxng remote add origin https://github.com/searxng/searxng.git && \
+    git -C /tmp/searxng fetch --depth 1 origin master && \
+    git -C /tmp/searxng checkout --detach "${SEARXNG_VERSION}" && \
+    /opt/searxng-venv/bin/pip install --no-cache-dir -U \
+        pip setuptools wheel pyyaml msgspec typing-extensions pybind11 && \
+    /opt/searxng-venv/bin/pip install --no-cache-dir --use-pep517 --no-build-isolation /tmp/searxng && \
+    /opt/searxng-venv/bin/pip install --no-cache-dir -r /tmp/searxng/requirements-server.txt && \
+    rm -rf /tmp/searxng
+
 COPY --from=llama-builder /artifacts/llama-server /llama-server
 
-RUN mkdir -p /workspace/{logs,models,data,venv}
+RUN mkdir -p /workspace/{logs,models,data,venv,searxng-cache} /etc/searxng
 
 COPY proxy/nginx.conf /etc/nginx/nginx.conf
 COPY proxy/readme.html /usr/share/nginx/html/readme.html
 COPY README.md /usr/share/nginx/html/README.md
+COPY searxng/settings.yml /etc/searxng/settings.yml
 
 COPY scripts /opt/llama-open-webui/scripts
 COPY scripts/start.sh /

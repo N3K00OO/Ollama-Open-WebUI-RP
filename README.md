@@ -7,9 +7,10 @@ This image is a llama-only RunPod base image:
 
 - `llama.cpp` is built in CI and started as `./llama-server`
 - Open WebUI is wired to the local OpenAI-compatible `/v1` endpoint
+- SearXNG is started locally for Open WebUI web search
 - JupyterLab is included for notebook and terminal access
 
-GitHub Actions refreshes upstream `llama.cpp` and Open WebUI versions at build time, runs a container smoke test for the launcher and proxy, pushes the images to GHCR, and verifies each published tag before the workflow passes.
+GitHub Actions refreshes upstream `llama.cpp`, Open WebUI, and SearXNG versions at build time, runs a container smoke test for the launcher, proxy, and search path, pushes the images to GHCR, and verifies each published tag before the workflow passes.
 
 ## Images
 
@@ -43,6 +44,12 @@ ghcr.io/n3k00oo/llama-open-webui:base-torch2.11.0-cu128
 http://127.0.0.1:11434/v1
 ```
 
+SearXNG binds to `127.0.0.1:18080` and Open WebUI connects to:
+
+```text
+http://127.0.0.1:18080/search?q=<query>
+```
+
 Place GGUF models in:
 
 ```text
@@ -61,6 +68,7 @@ Startup behavior:
 - the launcher waits for `/v1/models` to become ready and treats HTTP `503 Loading model` as startup-in-progress
 - if `llama-server` exits unexpectedly, the supervisor restarts it and keeps appending to `/workspace/logs/llama-server.log`
 - Open WebUI uses the local llama.cpp endpoint
+- Open WebUI web search uses the local SearXNG endpoint by default
 - the public Open WebUI proxy on `8081` is WebSocket-safe and preserves real upstream API failure codes
 
 ## Exposed Ports
@@ -79,6 +87,7 @@ Startup behavior:
 | `JUPYTERLAB_PASSWORD` | Password for JupyterLab | unset |
 | `TIME_ZONE` | Time zone, for example `Asia/Bangkok` | `Etc/UTC` |
 | `START_LLAMA_SERVER` | Starts `./llama-server` on boot | `True` |
+| `START_SEARXNG` | Starts the bundled local SearXNG service on boot | `True` |
 | `LLAMA_MODEL` | Absolute path to the GGUF file to load | auto-detect |
 | `LLAMA_MMPROJ` | Absolute path to the mmproj GGUF file | auto-detect |
 | `LLAMA_MULTIMODAL_REQUIRED` | Treat missing mmproj as a startup error | `False` |
@@ -116,6 +125,14 @@ Startup behavior:
 | `WEBUI_AUTH` | Enables Open WebUI auth | `False` |
 | `WEBUI_URL` | Public Open WebUI URL used for RunPod access | unset |
 | `CORS_ALLOW_ORIGIN` | Semicolon-separated CORS allowlist. If unset and `WEBUI_URL` is set, it defaults to `WEBUI_URL`. | unset |
+| `ENABLE_WEB_SEARCH` | Enables Open WebUI web search | `True` |
+| `WEB_SEARCH_ENGINE` | Open WebUI search provider | `searxng` |
+| `WEB_SEARCH_RESULT_COUNT` | Results Open WebUI asks the search provider to crawl | `3` |
+| `WEB_SEARCH_CONCURRENT_REQUESTS` | Concurrent Open WebUI web fetch requests | `10` |
+| `SEARXNG_PORT` | Local SearXNG bind port | `18080` |
+| `SEARXNG_QUERY_URL` | SearXNG URL used by Open WebUI. Override this for an external SearXNG instance. | `http://127.0.0.1:18080/search?q=<query>` |
+| `SEARXNG_LANGUAGE` | SearXNG language sent by Open WebUI | `all` |
+| `SEARXNG_READY_TIMEOUT` | Seconds to wait for bundled SearXNG startup | `60` |
 | `RESET_CONFIG_ON_START` | Re-applies provider config on startup | `True` |
 
 Set variables in RunPod under `Edit Pod/Template` > `Add Environment Variable`.
@@ -123,6 +140,8 @@ Set variables in RunPod under `Edit Pod/Template` > `Add Environment Variable`.
 If `WEBUI_AUTH=False` does not take effect, clear the existing Open WebUI data volume first. Open WebUI keeps auth state in its database after first boot.
 
 If you use a RunPod public URL, set `WEBUI_URL` to that exact URL. If users access the pod by multiple public addresses, set `CORS_ALLOW_ORIGIN` to a semicolon-separated allowlist that includes every valid origin.
+
+For the bundled search path, leave `START_SEARXNG=True` and keep the default `SEARXNG_QUERY_URL`. To use a separate SearXNG instance instead, set `START_SEARXNG=False` and point `SEARXNG_QUERY_URL` at the external endpoint. The URL must include `/search?q=<query>`.
 
 ### Boot-Time Download Examples
 
@@ -160,6 +179,7 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 | --- | --- |
 | JupyterLab | `/workspace/logs/jupyterlab.log` |
 | llama.cpp | `/workspace/logs/llama-server.log` |
+| SearXNG | `/workspace/logs/searxng.log` |
 | Open WebUI | `/workspace/logs/open-webui.log` |
 | Nginx access | `/workspace/logs/nginx-access.log` |
 | Nginx error | `/workspace/logs/nginx-error.log` |
@@ -173,6 +193,7 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 | PyTorch | 2.11.0 |
 | CUDA images | 12.4 through 13.0 |
 | Inference backend | `llama.cpp` |
+| Search backend | SearXNG |
 | UI | Open WebUI |
 | Extras | JupyterLab, `hf`, `wget`, `nvtop` |
 
@@ -180,6 +201,9 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 
 - [Open WebUI llama.cpp quick start](https://docs.openwebui.com/getting-started/quick-start/starting-with-llama-cpp/)
 - [Open WebUI environment configuration](https://docs.openwebui.com/reference/env-configuration/)
+- [Open WebUI SearXNG provider](https://docs.openwebui.com/features/chat-conversations/web-search/providers/searxng/)
+- [SearXNG container installation](https://docs.searxng.org/admin/installation-docker.html)
+- [SearXNG search API](https://docs.searxng.org/dev/search_api.html)
 - [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 
 Feedback & issues: [GitHub Issues](https://github.com/N3K00OO/LLAMA-Open-WebUi/issues)
