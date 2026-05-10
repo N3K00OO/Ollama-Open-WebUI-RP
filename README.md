@@ -50,6 +50,8 @@ SearXNG binds to `127.0.0.1:18080` and Open WebUI connects to:
 http://127.0.0.1:18080/search?q=<query>
 ```
 
+The public RunPod ports only expose the user-facing services. Open WebUI talks to both `llama-server` and SearXNG over localhost inside the same pod, so model generation and search handoff do not route out through the public proxy.
+
 Place GGUF models in:
 
 ```text
@@ -70,6 +72,42 @@ Startup behavior:
 - Open WebUI uses the local llama.cpp endpoint
 - Open WebUI web search uses the local SearXNG endpoint by default
 - the public Open WebUI proxy on `8081` is WebSocket-safe and preserves real upstream API failure codes
+
+## Web Search
+
+Web search is enabled by default through the bundled SearXNG service. No second RunPod pod, Docker Compose stack, or Docker-in-Docker setup is required.
+
+Default local search flow:
+
+```text
+Open WebUI -> http://127.0.0.1:18080/search?q=<query> -> SearXNG
+```
+
+The included SearXNG config enables JSON responses, which Open WebUI requires. Its settings file is baked into the image at:
+
+```text
+/etc/searxng/settings.yml
+```
+
+For a normal RunPod template, keep these defaults:
+
+```text
+START_SEARXNG=True
+ENABLE_WEB_SEARCH=True
+WEB_SEARCH_ENGINE=searxng
+SEARXNG_QUERY_URL=http://127.0.0.1:18080/search?q=<query>
+```
+
+To use an external SearXNG instance instead:
+
+```text
+START_SEARXNG=False
+ENABLE_WEB_SEARCH=True
+WEB_SEARCH_ENGINE=searxng
+SEARXNG_QUERY_URL=https://your-searxng.example/search?q=<query>
+```
+
+The external URL must allow `format=json` requests. If search fails, check `/workspace/logs/open-webui.log` and `/workspace/logs/searxng.log`.
 
 ## Exposed Ports
 
