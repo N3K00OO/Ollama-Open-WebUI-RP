@@ -29,7 +29,7 @@ ARG PYTHON_VERSION
 ARG TORCH_VERSION
 ARG CUDA_VERSION
 ARG OPEN_WEBUI_VERSION
-ARG SEARXNG_VERSION=FETCH_HEAD
+ARG SEARXNG_VERSION=master
 
 ENV SHELL=/bin/bash \
     PYTHONUNBUFFERED=True \
@@ -81,8 +81,8 @@ RUN pip install --no-cache-dir -U \
 RUN uv venv --seed /opt/searxng-venv && \
     git init /tmp/searxng && \
     git -C /tmp/searxng remote add origin https://github.com/searxng/searxng.git && \
-    git -C /tmp/searxng fetch --depth 1 origin master && \
-    git -C /tmp/searxng checkout --detach "${SEARXNG_VERSION}" && \
+    git -C /tmp/searxng fetch --depth 1 origin "${SEARXNG_VERSION}" && \
+    git -C /tmp/searxng checkout --detach FETCH_HEAD && \
     /opt/searxng-venv/bin/pip install --no-cache-dir -U \
         pip setuptools wheel pyyaml msgspec typing-extensions pybind11 && \
     /opt/searxng-venv/bin/pip install --no-cache-dir --use-pep517 --no-build-isolation /tmp/searxng && \

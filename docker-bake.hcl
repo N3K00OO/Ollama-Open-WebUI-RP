@@ -18,7 +18,7 @@ variable "LLAMA_CPP_VERSION" {
 }
 
 variable "SEARXNG_VERSION" {
-    default = "FETCH_HEAD"
+    default = "master"
 }
 
 variable "EXTRA_TAG" {
