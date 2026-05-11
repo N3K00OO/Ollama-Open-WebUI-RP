@@ -110,10 +110,13 @@ RUN pip install --no-cache-dir -U \
     jupyterlab jupyterlab_widgets ipykernel ipywidgets \
     numpy scipy matplotlib pandas scikit-learn seaborn requests tqdm pillow pyyaml \
     qdrant-client sentence-transformers \
-    docling-serve==${DOCLING_SERVE_VERSION} \
     "huggingface_hub[hf_xet]" \
     open-webui==${OPEN_WEBUI_VERSION} \
     torch==${TORCH_VERSION} torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+
+RUN uv venv --seed /opt/docling-serve-venv && \
+    /opt/docling-serve-venv/bin/pip install --no-cache-dir -U pip setuptools wheel && \
+    /opt/docling-serve-venv/bin/pip install --no-cache-dir "docling-serve==${DOCLING_SERVE_VERSION}"
 
 RUN wget -O /tmp/qdrant.tar.gz "https://github.com/qdrant/qdrant/releases/download/v${QDRANT_VERSION}/qdrant-x86_64-unknown-linux-musl.tar.gz" && \
     tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin qdrant && \
