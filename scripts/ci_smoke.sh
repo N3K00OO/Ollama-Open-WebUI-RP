@@ -58,6 +58,16 @@ cleanup() {
     wait "${SEARXNG_PID}" 2>/dev/null || true
   fi
 
+  if [ -n "${QDRANT_PID:-}" ] && kill -0 "${QDRANT_PID}" 2>/dev/null; then
+    kill "${QDRANT_PID}" 2>/dev/null || true
+    wait "${QDRANT_PID}" 2>/dev/null || true
+  fi
+
+  if [ -n "${DOCLING_PID:-}" ] && kill -0 "${DOCLING_PID}" 2>/dev/null; then
+    kill "${DOCLING_PID}" 2>/dev/null || true
+    wait "${DOCLING_PID}" 2>/dev/null || true
+  fi
+
   nginx -s stop >/dev/null 2>&1 || true
   rm -rf "${TEST_TMP}"
 }
@@ -156,6 +166,86 @@ PY
 
   python "${TEST_TMP}/header_echo_server.py" "${port}" &
   HEADER_ECHO_PID="$!"
+}
+
+make_rag_service_stubs() {
+  mkdir -p "${TEST_TMP}/bin"
+
+  cat > "${TEST_TMP}/bin/qdrant" <<'EOF'
+#!/bin/bash
+python - <<'PY'
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+host = os.environ.get("QDRANT__SERVICE__HOST", "127.0.0.1")
+port = int(os.environ.get("QDRANT__SERVICE__HTTP_PORT", "6333"))
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in {"/readyz", "/healthz", "/"}:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        return
+
+
+HTTPServer((host, port), Handler).serve_forever()
+PY
+EOF
+
+  cat > "${TEST_TMP}/bin/docling-serve" <<'EOF'
+#!/bin/bash
+host="127.0.0.1"
+port="5001"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --host)
+      host="$2"
+      shift 2
+      ;;
+    --port)
+      port="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+python - "${host}" "${port}" <<'PY'
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in {"/health", "/"}:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        return
+
+
+HTTPServer((host, port), Handler).serve_forever()
+PY
+EOF
+
+  chmod +x "${TEST_TMP}/bin/qdrant" "${TEST_TMP}/bin/docling-serve"
+  export PATH="${TEST_TMP}/bin:${ORIGINAL_PATH}"
 }
 
 json_header_value() {
@@ -278,6 +368,53 @@ assert_eq "${WEBUI_URL}" "${CORS_ALLOW_ORIGIN}" "WEBUI_URL should seed CORS_ALLO
 assert_eq "True" "${ENABLE_WEB_SEARCH}" "Embedded SearXNG should enable Open WebUI web search by default"
 assert_eq "searxng" "${WEB_SEARCH_ENGINE}" "Embedded SearXNG should select the searxng web search provider"
 assert_eq "http://127.0.0.1:18080/search?q=<query>" "${SEARXNG_QUERY_URL}" "Open WebUI should point at the embedded SearXNG instance"
+assert_eq "qdrant" "${VECTOR_DB}" "RAG stack should select Qdrant by default"
+assert_eq "http://127.0.0.1:6333" "${QDRANT_URI}" "RAG stack should point Open WebUI at local Qdrant"
+assert_eq "docling" "${CONTENT_EXTRACTION_ENGINE}" "RAG stack should select Docling extraction by default"
+assert_eq "http://127.0.0.1:5001" "${DOCLING_SERVER_URL}" "RAG stack should point Open WebUI at local Docling"
+assert_eq "intfloat/multilingual-e5-large-instruct" "${RAG_EMBEDDING_MODEL}" "RAG stack should set the multilingual embedding model"
+assert_eq "True" "${ENABLE_RAG_HYBRID_SEARCH}" "RAG stack should enable hybrid search"
+assert_eq "BAAI/bge-reranker-v2-m3" "${RAG_RERANKING_MODEL}" "RAG stack should set the BGE reranker"
+python -m json.tool <<< "${DOCLING_PARAMS}" >/dev/null || fail "DOCLING_PARAMS should be valid JSON"
+
+DISABLE_RAG_STACK=True
+configure_openwebui_runtime_env
+if [ -n "${VECTOR_DB:-}" ] || [ -n "${CONTENT_EXTRACTION_ENGINE:-}" ] || [ -n "${RAG_RERANKING_MODEL:-}" ]; then
+  fail "DISABLE_RAG_STACK=True should avoid forcing Open WebUI RAG env defaults"
+fi
+unset DISABLE_RAG_STACK
+
+DOCLING_PARAMS='{"do_ocr":true'
+if configure_openwebui_rag_env; then
+  fail "Invalid DOCLING_PARAMS JSON should fail validation"
+fi
+unset DOCLING_PARAMS
+
+make_rag_service_stubs
+QDRANT_PORT=18082
+QDRANT_URI="http://127.0.0.1:${QDRANT_PORT}"
+QDRANT_STORAGE_PATH="${TEST_TMP}/qdrant-storage"
+QDRANT_READY_TIMEOUT=10
+QDRANT_READY_POLL_INTERVAL=1
+start_qdrant
+curl -fsS "http://127.0.0.1:${QDRANT_PORT}/readyz" >/dev/null || fail "Qdrant readiness endpoint should respond"
+kill "${QDRANT_PID}" 2>/dev/null || true
+wait "${QDRANT_PID}" 2>/dev/null || true
+QDRANT_PID=""
+
+DOCLING_SERVE_PORT=18083
+DOCLING_SERVER_URL="http://127.0.0.1:${DOCLING_SERVE_PORT}"
+DOCLING_READY_TIMEOUT=10
+DOCLING_READY_POLL_INTERVAL=1
+start_docling
+curl -fsS "http://127.0.0.1:${DOCLING_SERVE_PORT}/health" >/dev/null || fail "Docling health endpoint should respond"
+kill "${DOCLING_PID}" 2>/dev/null || true
+wait "${DOCLING_PID}" 2>/dev/null || true
+DOCLING_PID=""
+
+PATH="${ORIGINAL_PATH}"
+unset QDRANT_PORT QDRANT_URI QDRANT_STORAGE_PATH QDRANT_READY_TIMEOUT QDRANT_READY_POLL_INTERVAL
+unset DOCLING_SERVE_PORT DOCLING_SERVER_URL DOCLING_READY_TIMEOUT DOCLING_READY_POLL_INTERVAL
 unset WEBUI_URL CORS_ALLOW_ORIGIN ENABLE_WEB_SEARCH WEB_SEARCH_ENGINE SEARXNG_QUERY_URL
 
 START_SEARXNG=True
@@ -320,6 +457,9 @@ grep -q 'proxy_set_header Upgrade $http_upgrade;' "${TEST_TMP}/nginx.txt" || fai
 grep -q 'proxy_set_header Host $proxy_host_header;' "${TEST_TMP}/nginx.txt" || fail "nginx config should preserve the public host for upstream services"
 grep -q 'proxy_set_header X-Forwarded-Host $proxy_forwarded_host;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward X-Forwarded-Host"
 grep -q 'proxy_set_header X-Forwarded-Proto $proxy_forwarded_proto;' "${TEST_TMP}/nginx.txt" || fail "nginx config should forward the public X-Forwarded-Proto"
+if grep -Eq 'listen[[:space:]]+(6333|5001)([[:space:];]|$)' "${TEST_TMP}/nginx.txt"; then
+  fail "nginx must not expose Qdrant or Docling ports"
+fi
 
 nginx
 sleep 1

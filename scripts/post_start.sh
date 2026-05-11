@@ -5,6 +5,8 @@ set -uo pipefail
 LLAMA_LOG_PATH="/workspace/logs/llama-server.log"
 OPENWEBUI_LOG_PATH="/workspace/logs/open-webui.log"
 SEARXNG_LOG_PATH="/workspace/logs/searxng.log"
+QDRANT_LOG_PATH="/workspace/logs/qdrant.log"
+DOCLING_LOG_PATH="/workspace/logs/docling.log"
 LLAMA_READY_MARKER="/workspace/logs/llama-server.ready"
 LLAMA_FAILED_MARKER="/workspace/logs/llama-server.failed"
 LLAMA_SUPERVISOR_PID_FILE="/workspace/logs/llama-supervisor.pid"
@@ -22,6 +24,8 @@ GPU_COMPUTE_CAPABILITY=""
 SEARXNG_PID=""
 SEARXNG_READY_HTTP_CODE=""
 SEARXNG_READY_BODY=""
+QDRANT_PID=""
+DOCLING_PID=""
 declare -a LLAMA_CMD=()
 
 timestamp() {
@@ -53,6 +57,55 @@ is_true() {
       return 1
       ;;
   esac
+}
+
+redact_secret() {
+  local value="${1:-}"
+
+  if [ -z "${value}" ]; then
+    printf '<empty>'
+    return 0
+  fi
+
+  printf '<redacted>'
+}
+
+wait_for_http() {
+  local name="$1"
+  local url="$2"
+  local timeout="${3:-60}"
+  local interval="${4:-2}"
+  local log_path="${5:-/dev/null}"
+  local elapsed=0
+  local status_code="000"
+
+  while [ "${elapsed}" -lt "${timeout}" ]; do
+    status_code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "${url}" 2>>"${log_path}" || true)"
+    case "${status_code}" in
+      200|204)
+        log "${name} is ready at ${url}."
+        return 0
+        ;;
+    esac
+
+    if [ "${elapsed}" -eq 0 ]; then
+      log "Waiting for ${name} at ${url}."
+    fi
+
+    sleep "${interval}"
+    elapsed=$((elapsed + interval))
+  done
+
+  log "Timed out after ${timeout}s waiting for ${name} at ${url}."
+  return 1
+}
+
+rag_stack_enabled() {
+  if is_true "${DISABLE_RAG_STACK:-False}"; then
+    return 1
+  fi
+
+  is_true "${ENABLE_RAG_STACK:-True}"
 }
 
 models_path() {
@@ -87,10 +140,82 @@ reset_launcher_state() {
 }
 
 ensure_runtime_paths() {
-  mkdir -p /workspace/logs /workspace/models /workspace/data /workspace/searxng-cache
+  mkdir -p /workspace/logs /workspace/models /workspace/data /workspace/searxng-cache /workspace/qdrant/storage /workspace/docling/artifacts
   : > "${LLAMA_LOG_PATH}"
   : > "${SEARXNG_LOG_PATH}"
+  : > "${QDRANT_LOG_PATH}"
+  : > "${DOCLING_LOG_PATH}"
   rm -f "${LLAMA_READY_MARKER}" "${LLAMA_FAILED_MARKER}" "${LLAMA_SUPERVISOR_PID_FILE}"
+}
+
+validate_json_env() {
+  local name="$1"
+  local value="$2"
+
+  python - "${name}" "${value}" <<'PY'
+import json
+import sys
+
+name, value = sys.argv[1], sys.argv[2]
+try:
+    json.loads(value)
+except json.JSONDecodeError as exc:
+    print(f"{name} is not valid JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+unset_openwebui_rag_env() {
+  unset VECTOR_DB
+  unset QDRANT_URI QDRANT_API_KEY QDRANT_ON_DISK QDRANT_TIMEOUT
+  unset CONTENT_EXTRACTION_ENGINE DOCLING_SERVER_URL DOCLING_PARAMS
+  unset RAG_EMBEDDING_MODEL RAG_TOP_K ENABLE_RAG_HYBRID_SEARCH
+  unset RAG_RERANKING_MODEL RAG_TOP_K_RERANKER RAG_RERANKING_BATCH_SIZE
+}
+
+configure_openwebui_rag_env() {
+  if ! rag_stack_enabled; then
+    log "RAG stack is disabled. Qdrant, Docling, hybrid search, and reranking env defaults will not be forced."
+    unset_openwebui_rag_env
+    return 0
+  fi
+
+  if is_true "${ENABLE_QDRANT:-True}"; then
+    export VECTOR_DB="${VECTOR_DB:-qdrant}"
+    export QDRANT_URI="${QDRANT_URI:-http://127.0.0.1:6333}"
+    export QDRANT_ON_DISK="${QDRANT_ON_DISK:-True}"
+    export QDRANT_TIMEOUT="${QDRANT_TIMEOUT:-10}"
+    if [ -n "${QDRANT_API_KEY:-}" ]; then
+      export QDRANT_API_KEY
+    fi
+  else
+    unset VECTOR_DB QDRANT_URI QDRANT_API_KEY QDRANT_ON_DISK QDRANT_TIMEOUT
+  fi
+
+  export RAG_EMBEDDING_MODEL="${RAG_EMBEDDING_MODEL:-intfloat/multilingual-e5-large-instruct}"
+  export RAG_TOP_K="${RAG_TOP_K:-20}"
+  export ENABLE_RAG_HYBRID_SEARCH="${ENABLE_RAG_HYBRID_SEARCH:-True}"
+
+  if is_true "${ENABLE_DOCLING:-True}"; then
+    export CONTENT_EXTRACTION_ENGINE="${CONTENT_EXTRACTION_ENGINE:-docling}"
+    export DOCLING_SERVER_URL="${DOCLING_SERVER_URL:-http://127.0.0.1:5001}"
+    export DOCLING_PARAMS="${DOCLING_PARAMS:-{\"do_ocr\":true,\"ocr_engine\":\"tesseract\",\"table_mode\":\"accurate\"}}"
+    if ! validate_json_env "DOCLING_PARAMS" "${DOCLING_PARAMS}"; then
+      return 1
+    fi
+  else
+    unset CONTENT_EXTRACTION_ENGINE DOCLING_SERVER_URL DOCLING_PARAMS
+  fi
+
+  if is_true "${ENABLE_RERANKER:-True}"; then
+    export RAG_RERANKING_MODEL="${RAG_RERANKING_MODEL:-BAAI/bge-reranker-v2-m3}"
+    export RAG_TOP_K_RERANKER="${RAG_TOP_K_RERANKER:-5}"
+    export RAG_RERANKING_BATCH_SIZE="${RAG_RERANKING_BATCH_SIZE:-8}"
+  else
+    unset RAG_RERANKING_MODEL RAG_TOP_K_RERANKER RAG_RERANKING_BATCH_SIZE
+  fi
+
+  log "Configured Open WebUI RAG defaults: stack=enabled, qdrant=${ENABLE_QDRANT:-True}, docling=${ENABLE_DOCLING:-True}, hybrid=${ENABLE_RAG_HYBRID_SEARCH}, reranker=${ENABLE_RERANKER:-True}."
 }
 
 configure_openwebui_runtime_env() {
@@ -115,6 +240,8 @@ configure_openwebui_runtime_env() {
       export SEARXNG_LANGUAGE="${SEARXNG_LANGUAGE:-all}"
     fi
   fi
+
+  configure_openwebui_rag_env
 }
 
 download_hf_repo() {
@@ -829,6 +956,82 @@ wait_for_searxng_ready() {
   return 1
 }
 
+start_qdrant() {
+  local host="${QDRANT_HOST:-127.0.0.1}"
+  local port="${QDRANT_PORT:-6333}"
+  local grpc_port="${QDRANT_GRPC_PORT:-6334}"
+  local storage_path="${QDRANT_STORAGE_PATH:-/workspace/qdrant/storage}"
+
+  if ! rag_stack_enabled || ! is_true "${ENABLE_QDRANT:-True}"; then
+    log "Qdrant startup skipped."
+    return 0
+  fi
+
+  if ! command -v qdrant >/dev/null 2>&1; then
+    log "Qdrant binary is missing. Disable the RAG stack with DISABLE_RAG_STACK=True or rebuild the image with Qdrant installed."
+    return 1
+  fi
+
+  mkdir -p "${storage_path}"
+  export QDRANT__SERVICE__HOST="${host}"
+  export QDRANT__SERVICE__HTTP_PORT="${port}"
+  export QDRANT__SERVICE__GRPC_PORT="${grpc_port}"
+  export QDRANT__STORAGE__STORAGE_PATH="${storage_path}"
+  export QDRANT__STORAGE__ON_DISK_PAYLOAD="${QDRANT_ON_DISK:-True}"
+
+  if [ -n "${QDRANT_API_KEY:-}" ]; then
+    export QDRANT__SERVICE__API_KEY="${QDRANT_API_KEY}"
+    log "Starting Qdrant on ${host}:${port} with API key $(redact_secret "${QDRANT_API_KEY}")."
+  else
+    unset QDRANT__SERVICE__API_KEY
+    log "Starting local Qdrant on ${host}:${port} without an API key. It is bound to localhost only."
+  fi
+
+  (
+    cd / || exit 1
+    qdrant
+  ) >> "${QDRANT_LOG_PATH}" 2>&1 &
+
+  QDRANT_PID="$!"
+  log "Qdrant pid=${QDRANT_PID}; logging to ${QDRANT_LOG_PATH}"
+
+  wait_for_http "Qdrant" "http://${host}:${port}/readyz" "${QDRANT_READY_TIMEOUT:-60}" "${QDRANT_READY_POLL_INTERVAL:-2}" "${QDRANT_LOG_PATH}"
+}
+
+start_docling() {
+  local host="${DOCLING_SERVE_HOST:-127.0.0.1}"
+  local port="${DOCLING_SERVE_PORT:-5001}"
+  local artifacts_path="${DOCLING_SERVE_ARTIFACTS_PATH:-/workspace/docling/artifacts}"
+
+  if ! rag_stack_enabled || ! is_true "${ENABLE_DOCLING:-True}"; then
+    log "Docling startup skipped."
+    return 0
+  fi
+
+  if ! command -v docling-serve >/dev/null 2>&1; then
+    log "docling-serve is missing. Disable Docling with ENABLE_DOCLING=False or rebuild the image with Docling installed."
+    return 1
+  fi
+
+  mkdir -p "${artifacts_path}"
+  export DOCLING_SERVE_ARTIFACTS_PATH="${artifacts_path}"
+  export DOCLING_SERVE_MAX_SYNC_WAIT="${DOCLING_SERVE_MAX_SYNC_WAIT:-600}"
+  export UVICORN_WORKERS=1
+  export OMP_NUM_THREADS="${DOCLING_OMP_NUM_THREADS:-4}"
+  export MKL_NUM_THREADS="${DOCLING_MKL_NUM_THREADS:-4}"
+
+  log "Starting Docling Serve on ${host}:${port} with UVICORN_WORKERS=1."
+  (
+    cd / || exit 1
+    docling-serve run --host "${host}" --port "${port}"
+  ) >> "${DOCLING_LOG_PATH}" 2>&1 &
+
+  DOCLING_PID="$!"
+  log "Docling Serve pid=${DOCLING_PID}; logging to ${DOCLING_LOG_PATH}"
+
+  wait_for_http "Docling Serve" "http://${host}:${port}/health" "${DOCLING_READY_TIMEOUT:-180}" "${DOCLING_READY_POLL_INTERVAL:-3}" "${DOCLING_LOG_PATH}"
+}
+
 start_searxng() {
   local port="${SEARXNG_PORT:-18080}"
   local workers="${SEARXNG_WORKERS:-1}"
@@ -926,7 +1129,9 @@ start_openwebui() {
 
 main() {
   ensure_runtime_paths
-  configure_openwebui_runtime_env
+  if ! configure_openwebui_runtime_env; then
+    return 1
+  fi
 
   if [ "${START_LLAMA_SERVER,,}" = "true" ]; then
     if ! resolve_llama_configuration; then
@@ -942,6 +1147,14 @@ main() {
   fi
 
   if ! start_searxng; then
+    return 1
+  fi
+
+  if ! start_qdrant; then
+    return 1
+  fi
+
+  if ! start_docling; then
     return 1
   fi
 

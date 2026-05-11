@@ -37,6 +37,8 @@ ARG TORCH_VERSION
 ARG CUDA_VERSION
 ARG OPEN_WEBUI_VERSION
 ARG SEARXNG_VERSION=master
+ARG QDRANT_VERSION=1.17.1
+ARG DOCLING_SERVE_VERSION=1.18.0
 
 ENV SHELL=/bin/bash \
     PYTHONUNBUFFERED=True \
@@ -56,6 +58,30 @@ ENV SHELL=/bin/bash \
     OPENAI_API_BASE_URL=http://127.0.0.1:11434/v1 \
     OPENAI_API_KEY=sk-no-key-required \
     SEARXNG_PORT=18080 \
+    ENABLE_RAG_STACK=True \
+    DISABLE_RAG_STACK=False \
+    ENABLE_QDRANT=True \
+    VECTOR_DB=qdrant \
+    QDRANT_URI=http://127.0.0.1:6333 \
+    QDRANT_API_KEY= \
+    QDRANT_ON_DISK=True \
+    QDRANT_TIMEOUT=10 \
+    QDRANT_STORAGE_PATH=/workspace/qdrant/storage \
+    ENABLE_DOCLING=True \
+    CONTENT_EXTRACTION_ENGINE=docling \
+    DOCLING_SERVER_URL=http://127.0.0.1:5001 \
+    DOCLING_PARAMS='{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}' \
+    DOCLING_SERVE_HOST=127.0.0.1 \
+    DOCLING_SERVE_PORT=5001 \
+    DOCLING_SERVE_MAX_SYNC_WAIT=600 \
+    UVICORN_WORKERS=1 \
+    RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-large-instruct \
+    RAG_TOP_K=20 \
+    ENABLE_RAG_HYBRID_SEARCH=True \
+    ENABLE_RERANKER=True \
+    RAG_RERANKING_MODEL=BAAI/bge-reranker-v2-m3 \
+    RAG_TOP_K_RERANKER=5 \
+    RAG_RERANKING_BATCH_SIZE=8 \
     HF_HOME=/runpod-volume/.cache/huggingface/ \
     HF_XET_HIGH_PERFORMANCE=1 \
     PIP_CACHE_DIR=/runpod-volume/.cache/pip/ \
@@ -66,6 +92,7 @@ WORKDIR /
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         git wget curl bash nginx-light rsync sudo binutils ffmpeg lshw nano tzdata file build-essential nvtop \
+        tesseract-ocr tesseract-ocr-eng poppler-utils \
         libgl1 libglib2.0-0 libssl3 openssh-server ca-certificates zstd \
         python3-dev libxml2-dev libxslt1-dev zlib1g-dev libffi-dev libssl-dev && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
@@ -82,9 +109,16 @@ RUN pip install --no-cache-dir -U \
     pip setuptools wheel \
     jupyterlab jupyterlab_widgets ipykernel ipywidgets \
     numpy scipy matplotlib pandas scikit-learn seaborn requests tqdm pillow pyyaml \
+    qdrant-client sentence-transformers \
+    docling-serve==${DOCLING_SERVE_VERSION} \
     "huggingface_hub[hf_xet]" \
     open-webui==${OPEN_WEBUI_VERSION} \
     torch==${TORCH_VERSION} torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+
+RUN wget -O /tmp/qdrant.tar.gz "https://github.com/qdrant/qdrant/releases/download/v${QDRANT_VERSION}/qdrant-x86_64-unknown-linux-musl.tar.gz" && \
+    tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin qdrant && \
+    chmod +x /usr/local/bin/qdrant && \
+    rm -f /tmp/qdrant.tar.gz
 
 RUN uv venv --seed /opt/searxng-venv && \
     git init --initial-branch=main /tmp/searxng && \
@@ -99,7 +133,7 @@ RUN uv venv --seed /opt/searxng-venv && \
 
 COPY --from=llama-builder /artifacts/llama-server /llama-server
 
-RUN mkdir -p /workspace/{logs,models,data,venv,searxng-cache} /etc/searxng
+RUN mkdir -p /workspace/{logs,models,data,venv,searxng-cache,qdrant/storage,docling/artifacts} /etc/searxng
 
 COPY proxy/nginx.conf /etc/nginx/nginx.conf
 COPY proxy/readme.html /usr/share/nginx/html/readme.html
