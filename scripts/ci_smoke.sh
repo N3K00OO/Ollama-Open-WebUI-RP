@@ -377,6 +377,10 @@ assert_eq "True" "${ENABLE_RAG_HYBRID_SEARCH}" "RAG stack should enable hybrid s
 assert_eq "BAAI/bge-reranker-v2-m3" "${RAG_RERANKING_MODEL}" "RAG stack should set the BGE reranker"
 python -m json.tool <<< "${DOCLING_PARAMS}" >/dev/null || fail "DOCLING_PARAMS should be valid JSON"
 
+DOCLING_PARAMS='{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}'"'"
+configure_openwebui_rag_env
+python -m json.tool <<< "${DOCLING_PARAMS}" >/dev/null || fail "DOCLING_PARAMS should tolerate one accidental trailing quote"
+
 DISABLE_RAG_STACK=True
 configure_openwebui_runtime_env
 if [ -n "${VECTOR_DB:-}" ] || [ -n "${CONTENT_EXTRACTION_ENGINE:-}" ] || [ -n "${RAG_RERANKING_MODEL:-}" ]; then

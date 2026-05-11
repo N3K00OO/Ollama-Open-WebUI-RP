@@ -165,6 +165,36 @@ except json.JSONDecodeError as exc:
 PY
 }
 
+normalize_json_env() {
+  local name="$1"
+  local value="$2"
+  local normalized=""
+
+  normalized="$(python - "${name}" "${value}" <<'PY'
+import json
+import sys
+
+name, value = sys.argv[1], sys.argv[2]
+for candidate in (value, value.strip("'\"")):
+    try:
+        json.loads(candidate)
+    except json.JSONDecodeError:
+        continue
+    print(candidate)
+    raise SystemExit(0)
+
+try:
+    json.loads(value)
+except json.JSONDecodeError as exc:
+    print(f"{name} is not valid JSON: {exc}", file=sys.stderr)
+raise SystemExit(1)
+PY
+  )" || return 1
+
+  printf -v "${name}" '%s' "${normalized}"
+  export "${name}"
+}
+
 unset_openwebui_rag_env() {
   unset VECTOR_DB
   unset QDRANT_URI QDRANT_API_KEY QDRANT_ON_DISK QDRANT_TIMEOUT
@@ -200,7 +230,7 @@ configure_openwebui_rag_env() {
     export CONTENT_EXTRACTION_ENGINE="${CONTENT_EXTRACTION_ENGINE:-docling}"
     export DOCLING_SERVER_URL="${DOCLING_SERVER_URL:-http://127.0.0.1:5001}"
     export DOCLING_PARAMS="${DOCLING_PARAMS:-{\"do_ocr\":true,\"ocr_engine\":\"tesseract\",\"table_mode\":\"accurate\"}}"
-    if ! validate_json_env "DOCLING_PARAMS" "${DOCLING_PARAMS}"; then
+    if ! normalize_json_env "DOCLING_PARAMS" "${DOCLING_PARAMS}"; then
       return 1
     fi
   else
