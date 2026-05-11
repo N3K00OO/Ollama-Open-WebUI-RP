@@ -72,9 +72,11 @@ DOCLING_SERVER_URL=http://127.0.0.1:5001
 RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-large-instruct
 RAG_RERANKING_MODEL=BAAI/bge-reranker-v2-m3
 DISABLE_RAG_STACK=True
+REQUIRE_RAG_SERVICES=False
 ```
 
 Do not expose Qdrant or Docling as public RunPod ports unless you are intentionally managing access controls yourself.
+Leave `REQUIRE_RAG_SERVICES=False` for normal RunPod use so Open WebUI can still boot if an optional RAG service is slow or unhealthy.
 
 ## Hub Worker API
 

@@ -131,6 +131,7 @@ The external URL must allow `format=json` requests. If search fails, check `/wor
 | `START_SEARXNG` | Starts the bundled local SearXNG service on boot | `True` |
 | `ENABLE_RAG_STACK` | Enables local RAG/document-processing defaults for Open WebUI | `True` |
 | `DISABLE_RAG_STACK` | Emergency kill switch. Skips Qdrant/Docling startup and does not force RAG env defaults. | `False` |
+| `REQUIRE_RAG_SERVICES` | Fail container startup if Qdrant or Docling readiness times out. Leave disabled on RunPod so Open WebUI can still boot while optional RAG services are investigated. | `False` |
 | `ENABLE_QDRANT` | Starts local Qdrant and configures Open WebUI to use it | `True` |
 | `VECTOR_DB` | Open WebUI vector database provider | `qdrant` |
 | `QDRANT_URI` | Local or remote Qdrant HTTP URL for Open WebUI | `http://127.0.0.1:6333` |
@@ -143,6 +144,7 @@ The external URL must allow `format=json` requests. If search fails, check `/wor
 | `DOCLING_SERVER_URL` | Local or remote Docling Serve URL for Open WebUI | `http://127.0.0.1:5001` |
 | `DOCLING_PARAMS` | JSON parameters passed to Docling by Open WebUI | `{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}` |
 | `DOCLING_SERVE_MAX_SYNC_WAIT` | Max seconds Docling Serve waits for synchronous document conversion | `600` |
+| `DOCLING_READY_TIMEOUT` | Seconds to wait for Docling Serve health during startup | `600` |
 | `UVICORN_WORKERS` | Docling Serve worker count. Keep at `1` unless using shared task state. | `1` |
 | `RAG_EMBEDDING_MODEL` | Default Open WebUI embedding model | `intfloat/multilingual-e5-large-instruct` |
 | `RAG_TOP_K` | Documents retrieved before reranking | `20` |
@@ -267,7 +269,8 @@ Troubleshooting:
 - Open WebUI uses PersistentConfig for some settings. After first boot, values saved in the Open WebUI database may override later environment changes. The launcher does not delete user data automatically.
 - Only clear or edit the Open WebUI database if you understand the data-loss risk.
 - `DOCLING_PARAMS` must be valid JSON. Invalid JSON fails startup before Open WebUI starts.
-- Docling can use CPU heavily during OCR and table extraction. Keep `UVICORN_WORKERS=1`; multiple workers can cause Docling task routing errors without shared state.
+- Docling can use CPU heavily during OCR and table extraction, and first startup can be slow while models initialize. Keep `UVICORN_WORKERS=1`; multiple workers can cause Docling task routing errors without shared state.
+- If Qdrant or Docling health does not become ready before the timeout, startup logs the failure and continues by default. Set `REQUIRE_RAG_SERVICES=True` only when you want the pod to fail fast during debugging.
 - The local BGE reranker can use RAM/VRAM when Open WebUI loads it. Set `ENABLE_RERANKER=False` or reduce `RAG_RERANKING_BATCH_SIZE` if memory is tight.
 - Qdrant data persists under `/workspace/qdrant/storage`. Back up that directory before changing vector database settings or rebuilding knowledge bases.
 
