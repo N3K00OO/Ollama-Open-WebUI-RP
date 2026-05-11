@@ -1025,7 +1025,16 @@ start_qdrant() {
   QDRANT_PID="$!"
   log "Qdrant pid=${QDRANT_PID}; logging to ${QDRANT_LOG_PATH}"
 
-  wait_for_http "Qdrant" "http://${host}:${port}/readyz" "${QDRANT_READY_TIMEOUT:-60}" "${QDRANT_READY_POLL_INTERVAL:-2}" "${QDRANT_LOG_PATH}"
+  if wait_for_http "Qdrant" "http://${host}:${port}/readyz" "${QDRANT_READY_TIMEOUT:-60}" "${QDRANT_READY_POLL_INTERVAL:-2}" "${QDRANT_LOG_PATH}"; then
+    return 0
+  fi
+
+  if is_true "${REQUIRE_RAG_SERVICES:-False}"; then
+    return 1
+  fi
+
+  log "Qdrant did not pass readiness before timeout; continuing because REQUIRE_RAG_SERVICES is not enabled."
+  return 0
 }
 
 start_docling() {
@@ -1068,7 +1077,16 @@ start_docling() {
   DOCLING_PID="$!"
   log "Docling Serve pid=${DOCLING_PID}; logging to ${DOCLING_LOG_PATH}"
 
-  wait_for_http "Docling Serve" "http://${host}:${port}/health" "${DOCLING_READY_TIMEOUT:-180}" "${DOCLING_READY_POLL_INTERVAL:-3}" "${DOCLING_LOG_PATH}"
+  if wait_for_http "Docling Serve" "http://${host}:${port}/health" "${DOCLING_READY_TIMEOUT:-600}" "${DOCLING_READY_POLL_INTERVAL:-3}" "${DOCLING_LOG_PATH}"; then
+    return 0
+  fi
+
+  if is_true "${REQUIRE_RAG_SERVICES:-False}"; then
+    return 1
+  fi
+
+  log "Docling Serve did not pass readiness before timeout; continuing because REQUIRE_RAG_SERVICES is not enabled."
+  return 0
 }
 
 start_searxng() {
