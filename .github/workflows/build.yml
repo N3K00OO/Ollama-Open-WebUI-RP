@@ -243,6 +243,7 @@ jobs:
         uses: docker/bake-action@v7
         env:
           IMAGE_REPO_NAME: ${{ needs.smoke.outputs.image_repo }}
+          EXTRA_TAG: -${{ github.sha }}
         with:
           source: .
           pull: true

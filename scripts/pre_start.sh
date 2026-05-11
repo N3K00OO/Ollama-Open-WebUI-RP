@@ -3,7 +3,13 @@
 export PYTHONUNBUFFERED=1
 
 echo "**** Setting the timezone based on the TIME_ZONE environment variable. If not set, it defaults to Etc/UTC. ****"
-export TZ=${TIME_ZONE:-"Etc/UTC"}
+requested_tz="${TIME_ZONE:-Etc/UTC}"
+if [ -f "/usr/share/zoneinfo/${requested_tz}" ]; then
+    export TZ="${requested_tz}"
+else
+    echo "**** Invalid TIME_ZONE '${requested_tz}'. Falling back to Etc/UTC. Use a full tz database name like Asia/Bangkok or Asia/Jakarta. ****"
+    export TZ="Etc/UTC"
+fi
 echo "**** Timezone set to $TZ ****"
 echo "$TZ" | sudo tee /etc/timezone > /dev/null
 sudo ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime

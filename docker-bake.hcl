@@ -27,7 +27,12 @@ variable "EXTRA_TAG" {
 
 function "tag" {
     params = [tag, cuda]
-    result = ["${IMAGE_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}${EXTRA_TAG}"]
+    result = EXTRA_TAG != "" ? [
+        "${IMAGE_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}",
+        "${IMAGE_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}${EXTRA_TAG}"
+    ] : [
+        "${IMAGE_REPO_NAME}:${tag}-torch${TORCH_VERSION}-${cuda}"
+    ]
 }
 
 target "_common" {
