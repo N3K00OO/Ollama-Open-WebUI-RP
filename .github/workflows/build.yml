@@ -128,7 +128,7 @@ jobs:
         id: image
         shell: bash
         run: |
-          echo "repo=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llama-open-webui-rag-candidate" >> "$GITHUB_OUTPUT"
           echo "smoke_repo=llama-open-webui-smoke" >> "$GITHUB_OUTPUT"
 
       - name: Resolve latest upstream versions
@@ -211,7 +211,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [base]
-        cuda: [12-4, 12-5, 12-6, 12-8, 13-0]
+        cuda: [12-6]
     steps:
       - name: Maximize build space
         uses: AdityaGarg8/remove-unwanted-software@v5
