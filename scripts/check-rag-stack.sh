@@ -45,7 +45,12 @@ check_absent_public_route() {
   echo "${label}: not exposed by nginx"
 }
 
-check_http "llama.cpp" "${LLAMA_READY_URL:-http://127.0.0.1:11434/v1/models}"
+if [ "${START_LLAMA_SERVER:-true}" = "false" ] || [ "${START_LLAMA_SERVER:-true}" = "False" ]; then
+  echo "llama.cpp: skipped because START_LLAMA_SERVER=${START_LLAMA_SERVER}"
+else
+  check_http "llama.cpp" "${LLAMA_READY_URL:-http://127.0.0.1:11434/v1/models}"
+fi
+
 check_http "Open WebUI" "${OPENWEBUI_HEALTH_URL:-http://127.0.0.1:8080/health}"
 check_http "SearXNG" "${SEARXNG_CHECK_URL:-http://127.0.0.1:${SEARXNG_PORT:-18080}/search?q=health&format=json}"
 
