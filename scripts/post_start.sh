@@ -1002,13 +1002,22 @@ start_docling() {
   local host="${DOCLING_SERVE_HOST:-127.0.0.1}"
   local port="${DOCLING_SERVE_PORT:-5001}"
   local artifacts_path="${DOCLING_SERVE_ARTIFACTS_PATH:-/workspace/docling/artifacts}"
+  local docling_bin="${DOCLING_SERVE_BIN:-}"
 
   if ! rag_stack_enabled || ! is_true "${ENABLE_DOCLING:-True}"; then
     log "Docling startup skipped."
     return 0
   fi
 
-  if ! command -v docling-serve >/dev/null 2>&1; then
+  if [ -z "${docling_bin}" ]; then
+    docling_bin="$(command -v docling-serve || true)"
+  fi
+
+  if [ -z "${docling_bin}" ] && [ -x /opt/docling-serve-venv/bin/docling-serve ]; then
+    docling_bin="/opt/docling-serve-venv/bin/docling-serve"
+  fi
+
+  if [ -z "${docling_bin}" ] || [ ! -x "${docling_bin}" ]; then
     log "docling-serve is missing. Disable Docling with ENABLE_DOCLING=False or rebuild the image with Docling installed."
     return 1
   fi
@@ -1023,7 +1032,7 @@ start_docling() {
   log "Starting Docling Serve on ${host}:${port} with UVICORN_WORKERS=1."
   (
     cd / || exit 1
-    docling-serve run --host "${host}" --port "${port}"
+    "${docling_bin}" run --host "${host}" --port "${port}"
   ) >> "${DOCLING_LOG_PATH}" 2>&1 &
 
   DOCLING_PID="$!"
