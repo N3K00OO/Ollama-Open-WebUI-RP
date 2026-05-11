@@ -147,14 +147,6 @@ jobs:
             python3 -c "import json, sys; print(json.load(sys.stdin)['tag_name'])"
           )"
 
-          open_webui_version="$(
-            curl -fsSL \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/open-webui/open-webui/releases/latest |
-            python3 -c "import json, sys; print(json.load(sys.stdin)['tag_name'].lstrip('v'))"
-          )"
-
           searxng_version="$(
             curl -fsSL \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -165,6 +157,10 @@ jobs:
 
           torch_version="$(
             python3 -c "from pathlib import Path; import re; match = re.search(r'variable \"TORCH_VERSION\"\\s*\\{\\s*default = \"([^\"]+)\"', Path('docker-bake.hcl').read_text(), re.S); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit('Unable to resolve TORCH_VERSION from docker-bake.hcl')))"
+          )"
+
+          open_webui_version="$(
+            python3 -c "from pathlib import Path; import re; match = re.search(r'variable \"OPEN_WEBUI_VERSION\"\\s*\\{\\s*default = \"([^\"]+)\"', Path('docker-bake.hcl').read_text(), re.S); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit('Unable to resolve OPEN_WEBUI_VERSION from docker-bake.hcl')))"
           )"
 
           echo "llama_cpp=${llama_cpp_version}" >> "$GITHUB_OUTPUT"
