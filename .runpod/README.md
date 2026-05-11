@@ -33,12 +33,35 @@ The full image provides:
 - Open WebUI wired to the local OpenAI-compatible `/v1` endpoint
 - JupyterLab for notebooks and terminal access
 - boot-time Hugging Face and `wget` model downloads
+- fast startup by default using the bundled `/venv`; set `SYNC_VENV_TO_WORKSPACE=True` only when you need a workspace venv copy
 
 Recommended ports for the Pod image:
 
 - `8081` for Open WebUI
 - `11435` for the proxied llama.cpp API
 - `8889` for JupyterLab
+
+Recommended Qwen3-VL template model:
+
+```text
+HF_MODEL_REPO=unsloth/Qwen3-VL-4B-Instruct-GGUF
+HF_MODEL_FILE=Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+HF_MMPROJ_FILE=mmproj-F16.gguf
+LLAMA_MULTIMODAL_REQUIRED=True
+LLAMA_ALIAS=qwen3-vl-4b-instruct-q4
+```
+
+Source model: <https://hf.co/unsloth/Qwen3-VL-4B-Instruct-GGUF>
+
+If a Llama-family GGUF needs a chat-template override, set it through `LLAMA_SERVER_EXTRA_ARGS`:
+
+```text
+LLAMA_SERVER_EXTRA_ARGS=--chat-template llama3
+LLAMA_SERVER_EXTRA_ARGS=--chat-template llama2
+LLAMA_SERVER_EXTRA_ARGS=--jinja --chat-template-file /workspace/templates/llama-custom.jinja
+```
+
+Most GGUFs already include `tokenizer.chat_template`, so override this only when the model card or generated chat formatting requires it.
 
 ## Hub Worker API
 

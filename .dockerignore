@@ -4,3 +4,7 @@
 Dockerfile
 .dockerignore
 .env
+.idea
+fixme
+keys
+RUNPOD_TEMPLATE_README.md

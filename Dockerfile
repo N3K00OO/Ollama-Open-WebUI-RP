@@ -1,4 +1,8 @@
-ARG BASE_IMAGE
+# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
+
+# WEBUI_AUTH and OPENAI_API_KEY are non-secret runtime defaults required by Open WebUI.
+ARG BASE_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
 FROM ${BASE_IMAGE} AS llama-builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -7,14 +11,17 @@ ARG LLAMA_CPP_VERSION
 
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-        build-essential ca-certificates cmake git libssl-dev ninja-build && \
+        build-essential ca-certificates ccache cmake git libssl-dev ninja-build && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-RUN git clone --branch "${LLAMA_CPP_VERSION}" --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp && \
+RUN --mount=type=cache,target=/root/.cache/ccache \
+    git clone --branch "${LLAMA_CPP_VERSION}" --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp && \
     cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build -G Ninja \
         -DBUILD_SHARED_LIBS=OFF \
         -DGGML_CUDA=ON \
         -DGGML_NATIVE=OFF \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DLLAMA_BUILD_EXAMPLES=OFF \
         -DLLAMA_BUILD_TESTS=OFF \
         -DCMAKE_BUILD_TYPE=Release && \
@@ -38,6 +45,7 @@ ENV SHELL=/bin/bash \
     CUDA_VERSION=${CUDA_VERSION} \
     DATA_DIR=/workspace/data \
     WEBUI_AUTH=False \
+    SYNC_VENV_TO_WORKSPACE=False \
     START_LLAMA_SERVER=True \
     START_SEARXNG=True \
     LLAMA_CTX_SIZE=4096 \
@@ -68,7 +76,7 @@ ENV PATH="/root/.local/bin/:$PATH"
 
 RUN uv python install ${PYTHON_VERSION} --default --preview && \
     uv venv --seed /venv
-ENV PATH="/workspace/venv/bin:/venv/bin:$PATH"
+ENV PATH="/venv/bin:/workspace/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir -U \
     pip setuptools wheel \
@@ -79,7 +87,7 @@ RUN pip install --no-cache-dir -U \
     torch==${TORCH_VERSION} torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
 
 RUN uv venv --seed /opt/searxng-venv && \
-    git init /tmp/searxng && \
+    git init --initial-branch=main /tmp/searxng && \
     git -C /tmp/searxng remote add origin https://github.com/searxng/searxng.git && \
     git -C /tmp/searxng fetch --depth 1 origin "${SEARXNG_VERSION}" && \
     git -C /tmp/searxng checkout --detach FETCH_HEAD && \

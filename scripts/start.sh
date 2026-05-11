@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e  # Exit the script if any statement returns a non-true return value
+set -euo pipefail
 
 # ---------------------------------------------------------------------------- #
 #                          Function Definitions                                #
@@ -28,17 +28,18 @@ execute_script() {
     local script_msg=$2
     if [[ -f ${script_path} ]]; then
         echo "${script_msg}"
-        bash ${script_path}
+        bash "${script_path}"
     fi
 }
 
 # Setup ssh
 setup_ssh() {
-    if [[ $PUBLIC_KEY ]]; then
+    if [[ -n "${PUBLIC_KEY:-}" ]]; then
         echo "Setting up SSH..."
         mkdir -p ~/.ssh
-        echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys
-        chmod 700 -R ~/.ssh
+        printf '%s\n' "${PUBLIC_KEY}" >> ~/.ssh/authorized_keys
+        chmod 700 ~/.ssh
+        chmod 600 ~/.ssh/authorized_keys
 
         if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
             ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -q -N ''
@@ -68,43 +69,59 @@ setup_ssh() {
 
         echo "SSH host keys:"
         for key in /etc/ssh/*.pub; do
+            [ -e "${key}" ] || continue
             echo "Key: $key"
-            ssh-keygen -lf $key
+            ssh-keygen -lf "${key}"
         done
     fi
 }
 
 # Export env vars
 export_env_vars() {
+    local env_file="/etc/rp_environment"
+    local name=""
+    local value=""
+    local quoted_value=""
+
     echo "Exporting environment variables..."
-    printenv | grep -E '^RUNPOD_|^PATH=|^_=' | awk -F = '{ print "export " $1 "=\"" $2 "\"" }' >> /etc/rp_environment
-    echo 'source /etc/rp_environment' >> ~/.bashrc
+    : > "${env_file}"
+
+    while IFS='=' read -r name value; do
+        case "${name}" in
+            RUNPOD_*|PATH|_)
+                printf -v quoted_value '%q' "${value}"
+                printf 'export %s=%s\n' "${name}" "${quoted_value}" >> "${env_file}"
+                ;;
+        esac
+    done < <(printenv)
+
+    if ! grep -qxF 'source /etc/rp_environment' ~/.bashrc; then
+        echo 'source /etc/rp_environment' >> ~/.bashrc
+    fi
 }
 
 # Start jupyter
 start_jupyter() {
-    # Default to not using a password
-    JUPYTER_PASSWORD=""
+    local jupyter_password=""
 
-    # Allow a password to be set by providing the JUPYTER_PASSWORD environment variable
-    if [[ ${JUPYTERLAB_PASSWORD} ]]; then
+    if [[ -n "${JUPYTERLAB_PASSWORD:-}" ]]; then
         echo "Starting JupyterLab with the provided password..."
-        JUPYTER_PASSWORD=${JUPYTERLAB_PASSWORD}
+        jupyter_password="${JUPYTERLAB_PASSWORD}"
     else
         echo "Starting JupyterLab without a password... (JUPYTERLAB_PASSWORD environment variable is not set.)"
     fi
-    
+
     mkdir -p /workspace/logs
     cd / && \
     nohup jupyter lab --allow-root \
         --no-browser \
         --port=8888 \
-        --ip=* \
+        "--ip=*" \
         --FileContentsManager.delete_to_trash=False \
         --ContentsManager.allow_hidden=True \
         --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' \
-        --ServerApp.token=${JUPYTER_PASSWORD} \
-        --ServerApp.allow_origin=* \
+        --ServerApp.token="${jupyter_password}" \
+        "--ServerApp.allow_origin=*" \
         --ServerApp.preferred_dir=/workspace &> /workspace/logs/jupyterlab.log &
     echo "JupyterLab started"
 }
@@ -112,13 +129,14 @@ start_jupyter() {
 main() {
     start_nginx
 
-    execute_script "/pre_start.sh" "Running pre-start script..."
+    setup_ssh
+    export_env_vars
 
     echo "Pod Started"
 
-    setup_ssh
+    execute_script "/pre_start.sh" "Running pre-start script..."
+
     start_jupyter
-    export_env_vars
 
     execute_script "/post_start.sh" "Running post-start script..."
 

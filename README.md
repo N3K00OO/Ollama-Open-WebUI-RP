@@ -61,6 +61,8 @@ Place GGUF models in:
 Startup behavior:
 
 - configured Hugging Face and `wget` downloads run before `llama-server` starts, so the pod does not need a second boot
+- SSH setup runs before optional workspace venv sync, so a slow network-volume copy does not block basic pod access
+- the image uses the bundled `/venv` by default; set `SYNC_VENV_TO_WORKSPACE=True` only if you explicitly want to copy it into `/workspace/venv`
 - V100 / compute capability `7.0` is allowed on the `cu124`, `cu125`, `cu126`, and `cu128` images, but blocked by default on `cu130` unless `LLAMA_ALLOW_UNSUPPORTED_GPU=True`
 - `llama-server` is always launched on `127.0.0.1:11434`, never on `8080`
 - if there is exactly one non-mmproj `*.gguf` file anywhere under `/workspace/models`, it is used as the explicit `--model`
@@ -124,6 +126,7 @@ The external URL must allow `format=json` requests. If search fails, check `/wor
 | --- | --- | --- |
 | `JUPYTERLAB_PASSWORD` | Password for JupyterLab | unset |
 | `TIME_ZONE` | Time zone, for example `Asia/Bangkok` | `Etc/UTC` |
+| `SYNC_VENV_TO_WORKSPACE` | Copies the bundled Python venv into `/workspace/venv` before app startup. Leave disabled for faster boot. | `False` |
 | `START_LLAMA_SERVER` | Starts `./llama-server` on boot | `True` |
 | `START_SEARXNG` | Starts the bundled local SearXNG service on boot | `True` |
 | `LLAMA_MODEL` | Absolute path to the GGUF file to load | auto-detect |
@@ -181,31 +184,67 @@ If you use a RunPod public URL, set `WEBUI_URL` to that exact URL. If users acce
 
 For the bundled search path, leave `START_SEARXNG=True` and keep the default `SEARXNG_QUERY_URL`. To use a separate SearXNG instance instead, set `START_SEARXNG=False` and point `SEARXNG_QUERY_URL` at the external endpoint. The URL must include `/search?q=<query>`.
 
-### Boot-Time Download Examples
+### Chat Template Overrides
 
-Whole Hugging Face repo:
+Most GGUF instruction models already include a `tokenizer.chat_template`, and `llama-server` uses that metadata by default. Override the template only when the model card says to, when a converted GGUF is missing the template, or when chat completions produce malformed role formatting.
+
+Use `LLAMA_SERVER_EXTRA_ARGS` for chat-template flags:
 
 ```text
-HF_REPO_DOWNLOAD=unsloth/Qwen2.5-VL-7B-Instruct-GGUF
+# Llama 3 / 3.1 / 3.2 Instruct style
+LLAMA_SERVER_EXTRA_ARGS=--chat-template llama3
+
+# Llama 2 Chat style
+LLAMA_SERVER_EXTRA_ARGS=--chat-template llama2
+```
+
+For a custom Jinja template, place the file somewhere persistent, for example `/workspace/templates/llama-custom.jinja`, then enable Jinja before the template file flag:
+
+```text
+LLAMA_SERVER_EXTRA_ARGS=--jinja --chat-template-file /workspace/templates/llama-custom.jinja
+```
+
+Do not put `--model`, `--alias`, `--mmproj`, `--host`, or `--port` in `LLAMA_SERVER_EXTRA_ARGS`; use `LLAMA_MODEL`, `LLAMA_ALIAS`, and `LLAMA_MMPROJ` for those values. To confirm the active template after boot, open the proxied API and check `/props`:
+
+```text
+https://<runpod-api-url>/props
+```
+
+### Boot-Time Download Examples
+
+Recommended Qwen3-VL template model:
+
+```text
+HF_MODEL_REPO=unsloth/Qwen3-VL-4B-Instruct-GGUF
+HF_MODEL_FILE=Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+HF_MMPROJ_FILE=mmproj-F16.gguf
+LLAMA_MULTIMODAL_REQUIRED=True
+LLAMA_ALIAS=qwen3-vl-4b-instruct-q4
 HF_TOKEN=hf_xxx
 ```
 
-One GGUF plus one mmproj from Hugging Face:
+This downloads only the Q4_K_M model file and the F16 projector instead of syncing every quant in the repo. The source repo is [unsloth/Qwen3-VL-4B-Instruct-GGUF](https://hf.co/unsloth/Qwen3-VL-4B-Instruct-GGUF).
+
+Alternative official Qwen filenames:
 
 ```text
-HF_MODEL_REPO=unsloth/Qwen2.5-VL-7B-Instruct-GGUF
-HF_MODEL_FILE=Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
-HF_MMPROJ_FILE=mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf
+HF_MODEL_REPO=Qwen/Qwen3-VL-4B-Instruct-GGUF
+HF_MODEL_FILE=Qwen3VL-4B-Instruct-Q4_K_M.gguf
+HF_MMPROJ_FILE=mmproj-Qwen3VL-4B-Instruct-F16.gguf
+LLAMA_MULTIMODAL_REQUIRED=True
+LLAMA_ALIAS=qwen3-vl-4b-instruct-q4
 HF_TOKEN=hf_xxx
 ```
 
 Direct URLs with files kept under `/workspace/models`:
 
 ```text
-WGET_MODEL_URL=https://huggingface.co/owner/repo/resolve/main/model.gguf?download=true
-WGET_MODEL_FILENAME=qwen/model.gguf
-WGET_MMPROJ_URL=https://huggingface.co/owner/repo/resolve/main/mmproj-model-f16.gguf?download=true
-WGET_MMPROJ_FILENAME=qwen/mmproj-model-f16.gguf
+WGET_MODEL_URL=https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3-VL-4B-Instruct-Q4_K_M.gguf?download=true
+WGET_MODEL_FILENAME=qwen3-vl-4b/Qwen3-VL-4B-Instruct-Q4_K_M.gguf
+WGET_MMPROJ_URL=https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-F16.gguf?download=true
+WGET_MMPROJ_FILENAME=qwen3-vl-4b/mmproj-F16.gguf
+LLAMA_MULTIMODAL_REQUIRED=True
+LLAMA_ALIAS=qwen3-vl-4b-instruct-q4
 HF_TOKEN=hf_xxx
 ```
 
@@ -243,5 +282,7 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 - [SearXNG container installation](https://docs.searxng.org/admin/installation-docker.html)
 - [SearXNG search API](https://docs.searxng.org/dev/search_api.html)
 - [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+- [llama.cpp chat templates wiki](https://github.com/ggml-org/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template)
+- [Qwen3-VL-4B-Instruct GGUF on Hugging Face](https://hf.co/unsloth/Qwen3-VL-4B-Instruct-GGUF)
 
 Feedback & issues: [GitHub Issues](https://github.com/N3K00OO/LLAMA-Open-WebUi/issues)
