@@ -13,6 +13,7 @@ DOWNLOADED_MMPROJ_PATH=""
 RESOLVED_MODEL_PATH=""
 RESOLVED_MODEL_ALIAS=""
 RESOLVED_MMPROJ_PATH=""
+LLAMA_SERVER_PID=""
 LLAMA_SUPERVISOR_PID=""
 READY_HTTP_CODE=""
 READY_BODY=""
@@ -679,7 +680,7 @@ start_llama_server_once() {
     "${LLAMA_CMD[@]}"
   ) >> "${LLAMA_LOG_PATH}" 2>&1 &
 
-  printf '%s' "$!"
+  LLAMA_SERVER_PID="$!"
 }
 
 write_llama_failure_marker() {
@@ -697,7 +698,8 @@ run_llama_supervisor() {
   rm -f "${LLAMA_READY_MARKER}" "${LLAMA_FAILED_MARKER}"
 
   while [ "${attempt}" -le "${max_attempts}" ]; do
-    server_pid="$(start_llama_server_once "${attempt}")"
+    start_llama_server_once "${attempt}"
+    server_pid="${LLAMA_SERVER_PID}"
     log_llama "llama-server pid=${server_pid}"
 
     if wait_for_llama_ready "${server_pid}"; then
