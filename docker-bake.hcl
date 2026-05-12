@@ -21,6 +21,14 @@ variable "SEARXNG_VERSION" {
     default = "master"
 }
 
+variable "QDRANT_VERSION" {
+    default = "1.17.1"
+}
+
+variable "DOCLING_SERVE_VERSION" {
+    default = "1.18.0"
+}
+
 variable "EXTRA_TAG" {
     default = ""
 }
@@ -44,6 +52,8 @@ target "_common" {
         OPEN_WEBUI_VERSION = OPEN_WEBUI_VERSION
         LLAMA_CPP_VERSION  = LLAMA_CPP_VERSION
         SEARXNG_VERSION    = SEARXNG_VERSION
+        QDRANT_VERSION     = QDRANT_VERSION
+        DOCLING_SERVE_VERSION = DOCLING_SERVE_VERSION
     }
 }
 

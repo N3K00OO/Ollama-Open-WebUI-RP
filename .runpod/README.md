@@ -34,6 +34,7 @@ The full image provides:
 - JupyterLab for notebooks and terminal access
 - boot-time Hugging Face and `wget` model downloads
 - fast startup by default using the bundled `/venv`; set `SYNC_VENV_TO_WORKSPACE=True` only when you need a workspace venv copy
+- optional local RAG stack with Qdrant, Docling Serve, hybrid search, multilingual embeddings, and BGE reranking
 
 Recommended ports for the Pod image:
 
@@ -62,6 +63,20 @@ LLAMA_SERVER_EXTRA_ARGS=--jinja --chat-template-file /workspace/templates/llama-
 ```
 
 Most GGUFs already include `tokenizer.chat_template`, so override this only when the model card or generated chat formatting requires it.
+
+RAG services bind locally by default:
+
+```text
+QDRANT_URI=http://127.0.0.1:6333
+DOCLING_SERVER_URL=http://127.0.0.1:5001
+RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-large-instruct
+RAG_RERANKING_MODEL=BAAI/bge-reranker-v2-m3
+DISABLE_RAG_STACK=True
+REQUIRE_RAG_SERVICES=False
+```
+
+Do not expose Qdrant or Docling as public RunPod ports unless you are intentionally managing access controls yourself.
+Leave `REQUIRE_RAG_SERVICES=False` for normal RunPod use so Open WebUI can still boot if an optional RAG service is slow or unhealthy.
 
 ## Hub Worker API
 

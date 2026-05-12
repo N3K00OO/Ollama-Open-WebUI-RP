@@ -129,6 +129,30 @@ The external URL must allow `format=json` requests. If search fails, check `/wor
 | `SYNC_VENV_TO_WORKSPACE` | Copies the bundled Python venv into `/workspace/venv` before app startup. Leave disabled for faster boot. | `False` |
 | `START_LLAMA_SERVER` | Starts `./llama-server` on boot | `True` |
 | `START_SEARXNG` | Starts the bundled local SearXNG service on boot | `True` |
+| `ENABLE_RAG_STACK` | Enables local RAG/document-processing defaults for Open WebUI | `True` |
+| `DISABLE_RAG_STACK` | Emergency kill switch. Skips Qdrant/Docling startup and does not force RAG env defaults. | `False` |
+| `REQUIRE_RAG_SERVICES` | Fail container startup if Qdrant or Docling readiness times out. Leave disabled on RunPod so Open WebUI can still boot while optional RAG services are investigated. | `False` |
+| `ENABLE_QDRANT` | Starts local Qdrant and configures Open WebUI to use it | `True` |
+| `VECTOR_DB` | Open WebUI vector database provider | `qdrant` |
+| `QDRANT_URI` | Local or remote Qdrant HTTP URL for Open WebUI | `http://127.0.0.1:6333` |
+| `QDRANT_API_KEY` | Optional Qdrant API key. Leave empty for localhost-only unauthenticated Qdrant. | unset |
+| `QDRANT_ON_DISK` | Enables Qdrant on-disk vector storage behavior in Open WebUI | `True` |
+| `QDRANT_TIMEOUT` | Qdrant request timeout in seconds | `10` |
+| `QDRANT_STORAGE_PATH` | Local Qdrant persistence path | `/workspace/qdrant/storage` |
+| `ENABLE_DOCLING` | Starts local Docling Serve and configures Open WebUI document extraction | `True` |
+| `CONTENT_EXTRACTION_ENGINE` | Open WebUI document extraction engine | `docling` |
+| `DOCLING_SERVER_URL` | Local or remote Docling Serve URL for Open WebUI | `http://127.0.0.1:5001` |
+| `DOCLING_PARAMS` | JSON parameters passed to Docling by Open WebUI | `{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}` |
+| `DOCLING_SERVE_MAX_SYNC_WAIT` | Max seconds Docling Serve waits for synchronous document conversion | `600` |
+| `DOCLING_READY_TIMEOUT` | Seconds to wait for Docling Serve health during startup | `600` |
+| `UVICORN_WORKERS` | Docling Serve worker count. Keep at `1` unless using shared task state. | `1` |
+| `RAG_EMBEDDING_MODEL` | Default Open WebUI embedding model | `intfloat/multilingual-e5-large-instruct` |
+| `RAG_TOP_K` | Documents retrieved before reranking | `20` |
+| `ENABLE_RAG_HYBRID_SEARCH` | Enables Open WebUI hybrid RAG search | `True` |
+| `ENABLE_RERANKER` | Enables local Open WebUI reranking env defaults | `True` |
+| `RAG_RERANKING_MODEL` | Default local reranker | `BAAI/bge-reranker-v2-m3` |
+| `RAG_TOP_K_RERANKER` | Documents kept after reranking | `5` |
+| `RAG_RERANKING_BATCH_SIZE` | Reranker batch size. Lower this to reduce memory spikes. | `8` |
 | `LLAMA_MODEL` | Absolute path to the GGUF file to load | auto-detect |
 | `LLAMA_MMPROJ` | Absolute path to the mmproj GGUF file | auto-detect |
 | `LLAMA_MULTIMODAL_REQUIRED` | Treat missing mmproj as a startup error | `False` |
@@ -183,6 +207,72 @@ If `WEBUI_AUTH=False` does not take effect, clear the existing Open WebUI data v
 If you use a RunPod public URL, set `WEBUI_URL` to that exact URL. If users access the pod by multiple public addresses, set `CORS_ALLOW_ORIGIN` to a semicolon-separated allowlist that includes every valid origin.
 
 For the bundled search path, leave `START_SEARXNG=True` and keep the default `SEARXNG_QUERY_URL`. To use a separate SearXNG instance instead, set `START_SEARXNG=False` and point `SEARXNG_QUERY_URL` at the external endpoint. The URL must include `/search?q=<query>`.
+
+## RAG / Document Processing Stack
+
+The image can start a local Open WebUI RAG stack:
+
+- Qdrant for persistent vector storage under `/workspace/qdrant/storage`
+- Docling Serve for document extraction and OCR
+- `intfloat/multilingual-e5-large-instruct` as the default embedding model
+- Open WebUI hybrid search enabled by default
+- `BAAI/bge-reranker-v2-m3` as the default local reranker
+
+Internal local URLs:
+
+```text
+Qdrant: http://127.0.0.1:6333
+Docling: http://127.0.0.1:5001
+```
+
+These services bind to localhost and are not exposed through the nginx RunPod proxy. Do not add public RunPod ports for Qdrant or Docling unless you are intentionally managing access controls yourself.
+
+RunPod env example:
+
+```text
+ENABLE_RAG_STACK=True
+ENABLE_QDRANT=True
+VECTOR_DB=qdrant
+QDRANT_URI=http://127.0.0.1:6333
+QDRANT_ON_DISK=True
+QDRANT_TIMEOUT=10
+ENABLE_DOCLING=True
+CONTENT_EXTRACTION_ENGINE=docling
+DOCLING_SERVER_URL=http://127.0.0.1:5001
+DOCLING_PARAMS={"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}
+RAG_EMBEDDING_MODEL=intfloat/multilingual-e5-large-instruct
+ENABLE_RAG_HYBRID_SEARCH=True
+RAG_TOP_K=20
+ENABLE_RERANKER=True
+RAG_RERANKING_MODEL=BAAI/bge-reranker-v2-m3
+RAG_TOP_K_RERANKER=5
+RAG_RERANKING_BATCH_SIZE=8
+```
+
+Emergency disable:
+
+```text
+DISABLE_RAG_STACK=True
+```
+
+Low-memory config:
+
+```text
+ENABLE_DOCLING=False
+ENABLE_RERANKER=False
+RAG_TOP_K=8
+RAG_RERANKING_BATCH_SIZE=2
+```
+
+Troubleshooting:
+
+- Open WebUI uses PersistentConfig for some settings. After first boot, values saved in the Open WebUI database may override later environment changes. The launcher does not delete user data automatically.
+- Only clear or edit the Open WebUI database if you understand the data-loss risk.
+- `DOCLING_PARAMS` must be valid JSON. Invalid JSON fails startup before Open WebUI starts.
+- Docling can use CPU heavily during OCR and table extraction, and first startup can be slow while models initialize. Keep `UVICORN_WORKERS=1`; multiple workers can cause Docling task routing errors without shared state.
+- If Qdrant or Docling health does not become ready before the timeout, startup logs the failure and continues by default. Set `REQUIRE_RAG_SERVICES=True` only when you want the pod to fail fast during debugging.
+- The local BGE reranker can use RAM/VRAM when Open WebUI loads it. Set `ENABLE_RERANKER=False` or reduce `RAG_RERANKING_BATCH_SIZE` if memory is tight.
+- Qdrant data persists under `/workspace/qdrant/storage`. Back up that directory before changing vector database settings or rebuilding knowledge bases.
 
 ### Chat Template Overrides
 
@@ -257,6 +347,8 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 | JupyterLab | `/workspace/logs/jupyterlab.log` |
 | llama.cpp | `/workspace/logs/llama-server.log` |
 | SearXNG | `/workspace/logs/searxng.log` |
+| Qdrant | `/workspace/logs/qdrant.log` |
+| Docling Serve | `/workspace/logs/docling.log` |
 | Open WebUI | `/workspace/logs/open-webui.log` |
 | Nginx access | `/workspace/logs/nginx-access.log` |
 | Nginx error | `/workspace/logs/nginx-error.log` |
@@ -271,6 +363,8 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 | CUDA images | 12.4 through 13.0 |
 | Inference backend | `llama.cpp` |
 | Search backend | SearXNG |
+| Vector database | Qdrant |
+| Document extraction | Docling Serve |
 | UI | Open WebUI |
 | Extras | JupyterLab, `hf`, `wget`, `nvtop` |
 
@@ -278,7 +372,10 @@ If a repo contains multiple quants or shards, set `LLAMA_MODEL` to the exact fil
 
 - [Open WebUI llama.cpp quick start](https://docs.openwebui.com/getting-started/quick-start/starting-with-llama-cpp/)
 - [Open WebUI environment configuration](https://docs.openwebui.com/reference/env-configuration/)
+- [Open WebUI Docling extraction](https://docs.openwebui.com/features/rag/document-extraction/docling/)
 - [Open WebUI SearXNG provider](https://docs.openwebui.com/features/chat-conversations/web-search/providers/searxng/)
+- [Docling Serve](https://github.com/docling-project/docling-serve)
+- [Qdrant installation](https://qdrant.tech/documentation/installation/)
 - [SearXNG container installation](https://docs.searxng.org/admin/installation-docker.html)
 - [SearXNG search API](https://docs.searxng.org/dev/search_api.html)
 - [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
