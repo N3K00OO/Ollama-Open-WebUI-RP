@@ -170,18 +170,37 @@ normalize_json_env() {
   local value="$2"
   local normalized=""
 
-  normalized="$(python - "${name}" "${value}" <<'PY'
+normalized="$(python - "${name}" "${value}" <<'PY'
 import json
 import sys
 
 name, value = sys.argv[1], sys.argv[2]
-for candidate in (value, value.strip("'\"")):
+decoder = json.JSONDecoder()
+
+def candidate_values(raw):
+    stripped = raw.strip()
+    yield stripped
+    yield stripped.strip("'\"")
+    if len(stripped) >= 2 and stripped[0] in "'\"" and stripped[-1] in "'\"":
+        yield stripped[1:-1]
     try:
-        json.loads(candidate)
+        yield stripped.encode("utf-8").decode("unicode_escape")
+    except UnicodeDecodeError:
+        pass
+
+for candidate in candidate_values(value):
+    try:
+        _, end = decoder.raw_decode(candidate)
     except json.JSONDecodeError:
         continue
-    print(candidate)
-    raise SystemExit(0)
+
+    remainder = candidate[end:].strip()
+    if not remainder:
+        print(candidate)
+        raise SystemExit(0)
+    if all(char in "'\"\\" for char in remainder):
+        print(candidate[:end])
+        raise SystemExit(0)
 
 try:
     json.loads(value)
