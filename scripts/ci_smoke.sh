@@ -375,6 +375,7 @@ assert_eq "http://127.0.0.1:5001" "${DOCLING_SERVER_URL}" "RAG stack should poin
 assert_eq "intfloat/multilingual-e5-large-instruct" "${RAG_EMBEDDING_MODEL}" "RAG stack should set the multilingual embedding model"
 assert_eq "True" "${ENABLE_RAG_HYBRID_SEARCH}" "RAG stack should enable hybrid search"
 assert_eq "BAAI/bge-reranker-v2-m3" "${RAG_RERANKING_MODEL}" "RAG stack should set the BGE reranker"
+assert_eq '{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}' "${DOCLING_PARAMS}" "RAG stack should set stable Docling JSON defaults"
 python -m json.tool <<< "${DOCLING_PARAMS}" >/dev/null || fail "DOCLING_PARAMS should be valid JSON"
 
 DOCLING_PARAMS="{\"do_ocr\":true,\"ocr_engine\":\"tesseract\",\"table_mode\":\"accurate\"}'"

@@ -7,6 +7,7 @@ OPENWEBUI_LOG_PATH="/workspace/logs/open-webui.log"
 SEARXNG_LOG_PATH="/workspace/logs/searxng.log"
 QDRANT_LOG_PATH="/workspace/logs/qdrant.log"
 DOCLING_LOG_PATH="/workspace/logs/docling.log"
+DEFAULT_DOCLING_PARAMS='{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}'
 LLAMA_READY_MARKER="/workspace/logs/llama-server.ready"
 LLAMA_FAILED_MARKER="/workspace/logs/llama-server.failed"
 LLAMA_SUPERVISOR_PID_FILE="/workspace/logs/llama-supervisor.pid"
@@ -170,7 +171,7 @@ normalize_json_env() {
   local value="$2"
   local normalized=""
 
-normalized="$(python - "${name}" "${value}" <<'PY'
+  normalized="$(python - "${name}" "${value}" <<'PY'
 import json
 import sys
 
@@ -205,8 +206,7 @@ for candidate in candidate_values(value):
 try:
     json.loads(value)
 except json.JSONDecodeError as exc:
-    tail_hex = value[-12:].encode("utf-8", errors="backslashreplace").hex()
-    print(f"{name} is not valid JSON: {exc}; value={value!r}; tail_hex={tail_hex}", file=sys.stderr)
+    print(f"{name} is not valid JSON: {exc}", file=sys.stderr)
 raise SystemExit(1)
 PY
   )" || return 1
@@ -249,7 +249,9 @@ configure_openwebui_rag_env() {
   if is_true "${ENABLE_DOCLING:-True}"; then
     export CONTENT_EXTRACTION_ENGINE="${CONTENT_EXTRACTION_ENGINE:-docling}"
     export DOCLING_SERVER_URL="${DOCLING_SERVER_URL:-http://127.0.0.1:5001}"
-    export DOCLING_PARAMS="${DOCLING_PARAMS:-{\"do_ocr\":true,\"ocr_engine\":\"tesseract\",\"table_mode\":\"accurate\"}}"
+    if [ -z "${DOCLING_PARAMS:-}" ]; then
+      export DOCLING_PARAMS="${DEFAULT_DOCLING_PARAMS}"
+    fi
     if ! normalize_json_env "DOCLING_PARAMS" "${DOCLING_PARAMS}"; then
       return 1
     fi
