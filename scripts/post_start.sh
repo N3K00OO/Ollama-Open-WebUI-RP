@@ -205,7 +205,8 @@ for candidate in candidate_values(value):
 try:
     json.loads(value)
 except json.JSONDecodeError as exc:
-    print(f"{name} is not valid JSON: {exc}", file=sys.stderr)
+    tail_hex = value[-12:].encode("utf-8", errors="backslashreplace").hex()
+    print(f"{name} is not valid JSON: {exc}; value={value!r}; tail_hex={tail_hex}", file=sys.stderr)
 raise SystemExit(1)
 PY
   )" || return 1
