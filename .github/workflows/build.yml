@@ -186,8 +186,8 @@ jobs:
             *.args.LLAMA_CPP_VERSION=${{ steps.versions.outputs.llama_cpp }}
             *.args.OPEN_WEBUI_VERSION=${{ steps.versions.outputs.open_webui }}
             *.args.SEARXNG_VERSION=${{ steps.versions.outputs.searxng }}
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            *.cache-from=type=gha,scope=smoke-base-12-6
+            *.cache-to=type=gha,scope=smoke-base-12-6,mode=max
 
       - name: Run smoke checks
         shell: bash
@@ -249,8 +249,8 @@ jobs:
             *.args.LLAMA_CPP_VERSION=${{ needs.smoke.outputs.llama_cpp }}
             *.args.OPEN_WEBUI_VERSION=${{ needs.smoke.outputs.open_webui }}
             *.args.SEARXNG_VERSION=${{ needs.smoke.outputs.searxng }}
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            *.cache-from=type=gha,scope=${{ matrix.target }}-${{ matrix.cuda }}
+            *.cache-to=type=gha,scope=${{ matrix.target }}-${{ matrix.cuda }},mode=max
 
       - name: Verify published GHCR image
         if: github.event_name != 'pull_request'
