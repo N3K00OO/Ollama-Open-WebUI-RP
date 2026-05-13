@@ -1062,7 +1062,7 @@ start_qdrant() {
 start_docling() {
   local host="${DOCLING_SERVE_HOST:-127.0.0.1}"
   local port="${DOCLING_SERVE_PORT:-5001}"
-  local artifacts_path="${DOCLING_SERVE_ARTIFACTS_PATH:-/workspace/docling/artifacts}"
+  local artifacts_path="${DOCLING_SERVE_ARTIFACTS_PATH:-}"
   local docling_bin="${DOCLING_SERVE_BIN:-}"
 
   if ! rag_stack_enabled || ! is_true "${ENABLE_DOCLING:-True}"; then
@@ -1083,8 +1083,12 @@ start_docling() {
     return 1
   fi
 
-  mkdir -p "${artifacts_path}"
-  export DOCLING_SERVE_ARTIFACTS_PATH="${artifacts_path}"
+  if [ -n "${artifacts_path}" ]; then
+    mkdir -p "${artifacts_path}"
+    export DOCLING_SERVE_ARTIFACTS_PATH="${artifacts_path}"
+  else
+    unset DOCLING_SERVE_ARTIFACTS_PATH
+  fi
   export DOCLING_SERVE_MAX_SYNC_WAIT="${DOCLING_SERVE_MAX_SYNC_WAIT:-600}"
   export UVICORN_WORKERS=1
   export OMP_NUM_THREADS="${DOCLING_OMP_NUM_THREADS:-4}"
