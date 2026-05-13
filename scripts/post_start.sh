@@ -7,6 +7,7 @@ OPENWEBUI_LOG_PATH="/workspace/logs/open-webui.log"
 SEARXNG_LOG_PATH="/workspace/logs/searxng.log"
 QDRANT_LOG_PATH="/workspace/logs/qdrant.log"
 DOCLING_LOG_PATH="/workspace/logs/docling.log"
+DEFAULT_DOCLING_PARAMS='{"do_ocr":true,"ocr_engine":"tesseract","table_mode":"accurate"}'
 LLAMA_READY_MARKER="/workspace/logs/llama-server.ready"
 LLAMA_FAILED_MARKER="/workspace/logs/llama-server.failed"
 LLAMA_SUPERVISOR_PID_FILE="/workspace/logs/llama-supervisor.pid"
@@ -175,13 +176,32 @@ import json
 import sys
 
 name, value = sys.argv[1], sys.argv[2]
-for candidate in (value, value.strip("'\"")):
+decoder = json.JSONDecoder()
+
+def candidate_values(raw):
+    stripped = raw.strip()
+    yield stripped
+    yield stripped.strip("'\"")
+    if len(stripped) >= 2 and stripped[0] in "'\"" and stripped[-1] in "'\"":
+        yield stripped[1:-1]
     try:
-        json.loads(candidate)
+        yield stripped.encode("utf-8").decode("unicode_escape")
+    except UnicodeDecodeError:
+        pass
+
+for candidate in candidate_values(value):
+    try:
+        _, end = decoder.raw_decode(candidate)
     except json.JSONDecodeError:
         continue
-    print(candidate)
-    raise SystemExit(0)
+
+    remainder = candidate[end:].strip()
+    if not remainder:
+        print(candidate)
+        raise SystemExit(0)
+    if all(char in "'\"\\" for char in remainder):
+        print(candidate[:end])
+        raise SystemExit(0)
 
 try:
     json.loads(value)
@@ -229,7 +249,9 @@ configure_openwebui_rag_env() {
   if is_true "${ENABLE_DOCLING:-True}"; then
     export CONTENT_EXTRACTION_ENGINE="${CONTENT_EXTRACTION_ENGINE:-docling}"
     export DOCLING_SERVER_URL="${DOCLING_SERVER_URL:-http://127.0.0.1:5001}"
-    export DOCLING_PARAMS="${DOCLING_PARAMS:-{\"do_ocr\":true,\"ocr_engine\":\"tesseract\",\"table_mode\":\"accurate\"}}"
+    if [ -z "${DOCLING_PARAMS:-}" ]; then
+      export DOCLING_PARAMS="${DEFAULT_DOCLING_PARAMS}"
+    fi
     if ! normalize_json_env "DOCLING_PARAMS" "${DOCLING_PARAMS}"; then
       return 1
     fi
